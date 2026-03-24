@@ -16,9 +16,11 @@ import java.util.List;
 import javax.imageio.ImageIO;
 
 import info.openrocket.core.rocketcomponent.FinSet;
-import info.openrocket.core.rocketcomponent.RingComponent;
+import info.openrocket.core.rocketcomponent.InnerTube;
 import info.openrocket.core.rocketcomponent.RocketComponent;
+import info.openrocket.core.rocketcomponent.ThicknessRingComponent;
 import info.openrocket.core.rocketcomponent.SymmetricComponent;
+import info.openrocket.core.rocketcomponent.TubeCoupler;
 import info.openrocket.core.util.CoordinateIF;
 
 /**
@@ -67,8 +69,8 @@ public class TextureCreationService {
 			return generateForSymmetric((SymmetricComponent) component, insideSurface, dpi);
 		}
 
-		if (component instanceof RingComponent) {
-			return generateForRingComponent((RingComponent) component, dpi);
+		if (component instanceof InnerTube || component instanceof TubeCoupler) {
+			return generateForRingComponent((ThicknessRingComponent) component, dpi);
 		}
 
 		throw new TextureGenerationException("Component type " + component.getClass().getSimpleName()
@@ -110,10 +112,11 @@ public class TextureCreationService {
 	public static boolean isComponentSupported(RocketComponent component) {
 		return component instanceof FinSet
 				|| component instanceof SymmetricComponent
-				|| component instanceof RingComponent;
+				|| component instanceof InnerTube
+				|| component instanceof TubeCoupler;
 	}
 
-	private TextureGenerationResult generateForRingComponent(RingComponent component, double dpi)
+	private TextureGenerationResult generateForRingComponent(ThicknessRingComponent component, double dpi)
 			throws TextureGenerationException {
 		double length = component.getLength();
 		if (length <= 0) {

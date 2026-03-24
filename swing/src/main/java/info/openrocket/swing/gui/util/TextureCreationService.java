@@ -99,6 +99,12 @@ public class TextureCreationService {
 		}
 
 		double widthMeters = 2 * Math.PI * maxRadius;
+	public static boolean isComponentSupported(RocketComponent component) {
+		return component instanceof FinSet
+				|| component instanceof SymmetricComponent
+				|| component instanceof RingComponent;
+	}
+
 		return renderBlankImage(widthMeters, length, dpi, null);
 	}
 

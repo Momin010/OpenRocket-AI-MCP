@@ -137,6 +137,8 @@ You can view the full list of contributors [here](https://github.com/openrocket/
 - Mohamed Amin Elkebsi
 - Oleksandr Hladin
 
+Want to help us translate OpenRocket into your language? Join our [Crowdin project](https://crowdin.com/project/openrocket) and contribute!
+
 ## 📜 License
 
 OpenRocket is proudly open-source under the [GNU GPL](https://www.gnu.org/licenses/gpl-3.0.en.html) license. Feel free to use, study, and extend.

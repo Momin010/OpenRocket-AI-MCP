@@ -980,19 +980,25 @@ public class CaliperManager {
 		if (mode == CaliperMode.VERTICAL) {
 			// Vertical mode: move X position to 5% from left or right edge
 			double currentX = cal1Handle ? caliper1X : caliper2X;
+			double siblingX = cal1Handle ? caliper2X : caliper1X;
 			double visibleWidth = bottomRight.x - topLeft.x;
+			double margin = visibleWidth * 0.05;
 			double newX;
-			
+
 			// Determine which edge (left or right) based on current position
 			double centerX = (topLeft.x + bottomRight.x) / 2.0;
 			if (currentX < centerX) {
-				// Move to 5% from left edge
-				newX = topLeft.x + visibleWidth * 0.05;
+				newX = topLeft.x + margin;
 			} else {
-				// Move to 5% from right edge
-				newX = bottomRight.x - visibleWidth * 0.05;
+				newX = bottomRight.x - margin;
 			}
-			
+
+			// If the sibling is already in view at the same spot, offset by one margin gap
+			boolean siblingInView = siblingX >= topLeft.x && siblingX <= bottomRight.x;
+			if (siblingInView && Math.abs(siblingX - newX) < margin) {
+				newX = currentX < centerX ? siblingX + margin : siblingX - margin;
+			}
+
 			setCaliperLinePosition(cal1Handle, newX);
 		} else {
 			// Horizontal mode: move Y position to 5% from top or bottom edge
@@ -1001,20 +1007,26 @@ public class CaliperManager {
 			double minY = Math.min(topLeft.y, bottomRight.y);
 			double maxY = Math.max(topLeft.y, bottomRight.y);
 			double visibleHeight = maxY - minY;
-			
+			double margin = visibleHeight * 0.05;
+
 			double currentY = cal1Handle ? caliper1Y : caliper2Y;
+			double siblingY = cal1Handle ? caliper2Y : caliper1Y;
 			double newY;
-			
+
 			// Determine which edge (top or bottom) based on current position
 			double centerY = (minY + maxY) / 2.0;
 			if (currentY < centerY) {
-				// Move to 5% from top edge (minY is top in model coordinates)
-				newY = minY + visibleHeight * 0.05;
+				newY = minY + margin;
 			} else {
-				// Move to 5% from bottom edge (maxY is bottom in model coordinates)
-				newY = maxY - visibleHeight * 0.05;
+				newY = maxY - margin;
 			}
-			
+
+			// If the sibling is already in view at the same spot, offset by one margin gap
+			boolean siblingInView = siblingY >= minY && siblingY <= maxY;
+			if (siblingInView && Math.abs(siblingY - newY) < margin) {
+				newY = currentY < centerY ? siblingY + margin : siblingY - margin;
+			}
+
 			setHorizontalCaliperLinePosition(cal1Handle, newY);
 		}
 	}

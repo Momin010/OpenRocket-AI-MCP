@@ -96,6 +96,7 @@ import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
@@ -2198,19 +2199,33 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 		final Color caliperHoverColor = ColorConversion.brightenColor(caliperColor, 50);
 
 		// Mode radio buttons (vertical / horizontal)
+		// The icon is kept in a separate JLabel because FlatLaf replaces the radio circle with a
+		// custom icon when set directly on the JRadioButton.
 		ButtonGroup modeGroup = new ButtonGroup();
-		JRadioButton verticalRadio = new JRadioButton(trans.get("RocketPanel.radio.CaliperVertical"));
-		JRadioButton horizontalRadio = new JRadioButton(trans.get("RocketPanel.radio.CaliperHorizontal"));
-		verticalRadio.setForeground(caliperColor);
-		horizontalRadio.setForeground(caliperColor);
+		JRadioButton verticalRadio = new JRadioButton();
+		JRadioButton horizontalRadio = new JRadioButton();
+		JLabel verticalModeIcon = new JLabel(createCaliperDoubleArrowIcon(true, caliperColor));
+		JLabel horizontalModeIcon = new JLabel(createCaliperDoubleArrowIcon(false, caliperColor));
 		verticalRadio.setToolTipText(trans.get("RocketPanel.radio.CaliperVertical.ttip"));
 		horizontalRadio.setToolTipText(trans.get("RocketPanel.radio.CaliperHorizontal.ttip"));
+		verticalModeIcon.setToolTipText(trans.get("RocketPanel.radio.CaliperVertical.ttip"));
+		horizontalModeIcon.setToolTipText(trans.get("RocketPanel.radio.CaliperHorizontal.ttip"));
+		verticalModeIcon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		horizontalModeIcon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		verticalModeIcon.addMouseListener(new java.awt.event.MouseAdapter() {
+			@Override public void mouseClicked(java.awt.event.MouseEvent e) { verticalRadio.doClick(); }
+		});
+		horizontalModeIcon.addMouseListener(new java.awt.event.MouseAdapter() {
+			@Override public void mouseClicked(java.awt.event.MouseEvent e) { horizontalRadio.doClick(); }
+		});
 		modeGroup.add(verticalRadio);
 		modeGroup.add(horizontalRadio);
 		verticalRadio.setSelected(caliperManager.getMode() == CaliperManager.CaliperMode.VERTICAL);
 		horizontalRadio.setSelected(caliperManager.getMode() == CaliperManager.CaliperMode.HORIZONTAL);
-		panel.add(verticalRadio, "cell 0 0");
-		panel.add(horizontalRadio, "cell 1 0");
+		panel.add(verticalRadio, "cell 0 0, split 2");
+		panel.add(verticalModeIcon, "cell 0 0");
+		panel.add(horizontalRadio, "cell 1 0, split 2");
+		panel.add(horizontalModeIcon, "cell 1 0");
 
 		// Snap toggle button
 		ThemedToggleButton snapToggle = new ThemedToggleButton(trans.get("RocketPanel.checkbox.CaliperSnap"), Icons.SNAP);
@@ -2260,10 +2275,12 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 		diamond2Btn.setToolTipText(trans.get("RocketPanel.popup.CaliperDiamond2.ttip"));
 		diamond2Btn.addActionListener(e -> showCaliperPositionPopup(2, diamond2Btn));
 
+		JLabel leftArrow = new JLabel(createCaliperSingleArrowIcon(true, caliperColor));
+		JLabel rightArrow = new JLabel(createCaliperSingleArrowIcon(false, caliperColor));
 		distancePanel.add(diamond1Btn);
-		distancePanel.add(new JLabel("←"));
+		distancePanel.add(leftArrow);
 		distancePanel.add(distanceField);
-		distancePanel.add(new JLabel("→"));
+		distancePanel.add(rightArrow);
 		distancePanel.add(diamond2Btn);
 		panel.add(distancePanel, "cell 2 1");
 
@@ -2314,8 +2331,11 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 			Color newValueFg = GUIUtil.getUITheme().getCaliperValueForegroundColor();
 			Color newDiamondLabelColor = GUIUtil.getUITheme().getCaliperDiamondLabelColor();
 
-			verticalRadio.setForeground(newCaliperColor);
-			horizontalRadio.setForeground(newCaliperColor);
+			verticalModeIcon.setIcon(createCaliperDoubleArrowIcon(true, newCaliperColor));
+			horizontalModeIcon.setIcon(createCaliperDoubleArrowIcon(false, newCaliperColor));
+
+			leftArrow.setIcon(createCaliperSingleArrowIcon(true, newCaliperColor));
+			rightArrow.setIcon(createCaliperSingleArrowIcon(false, newCaliperColor));
 
 			distanceField.setBackground(newValueBg);
 			distanceField.setForeground(newValueFg);
@@ -2378,6 +2398,76 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 
 		popup.add(content);
 		popup.show(source, 0, source.getHeight());
+	}
+
+	/**
+	 * Create a twin-arrow icon for the caliper mode radio buttons.
+	 * Vertical mode shows two upward arrows side by side (↑↑);
+	 * horizontal mode shows two leftward arrows stacked (←←).
+	 *
+	 * @param vertical true for vertical mode (↑↑), false for horizontal (←←)
+	 * @param color    the arrow color
+	 * @return an ImageIcon of the twin arrows
+	 */
+	private ImageIcon createCaliperDoubleArrowIcon(boolean vertical, Color color) {
+		int size = 16;
+		BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g2 = image.createGraphics();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setColor(color);
+
+		int head = 4; // arrowhead depth
+		int hw = 3;   // arrowhead half-width
+		int stemTop = head + 1;
+		int stemBot = size - 2;
+
+		g2.setStroke(new BasicStroke(1.5f));
+		if (vertical) {
+			// Two upward arrows side by side at x=4 and x=11
+			for (int cx : new int[]{4, 11}) {
+				g2.drawLine(cx, stemTop, cx, stemBot);
+				g2.fillPolygon(new int[]{cx - hw, cx, cx + hw}, new int[]{head, 0, head}, 3);
+			}
+		} else {
+			// Two leftward arrows stacked at y=4 and y=11
+			for (int cy : new int[]{4, 11}) {
+				g2.drawLine(stemTop, cy, stemBot, cy);
+				g2.fillPolygon(new int[]{head, 0, head}, new int[]{cy - hw, cy, cy + hw}, 3);
+			}
+		}
+
+		g2.dispose();
+		return new ImageIcon(image);
+	}
+
+	/**
+	 * Create a single-headed arrow icon (← or →) for the caliper distance display.
+	 *
+	 * @param left  true for a left-pointing arrow (←), false for right-pointing (→)
+	 * @param color the arrow color
+	 * @return an ImageIcon of the single-headed arrow
+	 */
+	private ImageIcon createCaliperSingleArrowIcon(boolean left, Color color) {
+		int w = 12, h = 10;
+		BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g2 = image.createGraphics();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setColor(color);
+
+		int head = 4;
+		int cy = h / 2;
+
+		g2.setStroke(new BasicStroke(1.5f));
+		if (left) {
+			g2.drawLine(head, cy, w - 1, cy);
+			g2.fillPolygon(new int[]{head, 0, head}, new int[]{cy - head, cy, cy + head}, 3);
+		} else {
+			g2.drawLine(0, cy, w - head, cy);
+			g2.fillPolygon(new int[]{w - head, w, w - head}, new int[]{cy - head, cy, cy + head}, 3);
+		}
+
+		g2.dispose();
+		return new ImageIcon(image);
 	}
 
 	/**

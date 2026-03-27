@@ -183,14 +183,14 @@ public class Icons {
 			"Close document",
 			Map.of(
 					SVG_THEME_COLOR_RGB, SVG_DEFAULT_COLOR_KEY,
-					0xc80000, "OR.icons.red"
+					0xc80000, "OR.colors.red"
 			));
 	public static final Icon FILE_QUIT = loadIcon(
 			"pix/icons/lucide/power.svg",
 			"pix/icons/application-exit.png",
 			"Quit OpenRocket",
 			Map.of(
-					SVG_THEME_COLOR_RGB, "OR.icons.red"
+					SVG_THEME_COLOR_RGB, "OR.colors.red"
 			));
 	public static final Icon EDIT_UNDO = loadIcon(
 			"pix/icons/lucide/undo.svg",

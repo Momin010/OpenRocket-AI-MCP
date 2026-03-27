@@ -91,6 +91,7 @@ import info.openrocket.core.file.rasaero.RASAeroCommonConstants;
 import info.openrocket.core.file.svg.export.SVGExportOptions;
 import info.openrocket.core.l10n.Translator;
 import info.openrocket.core.logging.Markers;
+import info.openrocket.core.rocketcomponent.AxialStage;
 import info.openrocket.core.rocketcomponent.ComponentChangeEvent;
 import info.openrocket.core.rocketcomponent.ComponentChangeListener;
 import info.openrocket.core.rocketcomponent.Rocket;
@@ -286,11 +287,25 @@ private static final Translator trans = Application.getTranslator();
 			popupMenu.addSeparator();
 			popupMenu.add(actions.getScaleAction());
 			popupMenu.add(actions.getToggleVisibilityAction());
-			popupMenu.add(actions.getToggleStageActiveAction());
+			JMenuItem toggleStageActiveItem = popupMenu.add(actions.getToggleStageActiveAction());
 
 			popupMenu.addSeparator();
 			popupMenu.add(actions.getExportOBJAction());
 			popupMenu.add(actions.getExportSVGAction());
+
+			popupMenu.addPopupMenuListener(new PopupMenuListener() {
+				@Override
+				public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+					List<RocketComponent> selected = selectionModel.getSelectedComponents();
+					boolean onlyStages = !selected.isEmpty() &&
+							selected.stream().allMatch(AxialStage.class::isInstance);
+					toggleStageActiveItem.setVisible(onlyStages);
+				}
+				@Override
+				public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+				@Override
+				public void popupMenuCanceled(PopupMenuEvent e) {}
+			});
 		}
 
 		installBananaAltKeyTracker();

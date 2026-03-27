@@ -94,6 +94,8 @@ import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.image.BufferedImage;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
@@ -536,11 +538,23 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 			@Override
 			public Dimension getPreferredSize() {
 				Dimension d = super.getPreferredSize();
-				d.height += getHorizontalScrollBar().getPreferredSize().height;
+				if (getHorizontalScrollBar().isVisible()) {
+					d.height += getHorizontalScrollBar().getPreferredSize().height;
+				}
 				return d;
 			}
 		};
 		ribbonScroll.setBorder(null);
+		ribbonScroll.getHorizontalScrollBar().addComponentListener(new ComponentAdapter() {
+			@Override
+			public void componentShown(ComponentEvent e) {
+				RocketPanel.this.revalidate();
+			}
+			@Override
+			public void componentHidden(ComponentEvent e) {
+				RocketPanel.this.revalidate();
+			}
+		});
 		add(ribbonScroll, "growx, span, wrap");
 
 		// Create rotation control

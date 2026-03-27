@@ -66,6 +66,7 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
 import javax.swing.JViewport;
 import javax.swing.ListCellRenderer;
@@ -529,7 +530,18 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 		final ConfigurationComboBox configComboBox = new ConfigurationComboBox(rkt);
 		ribbon.add(configComboBox, "cell 7 1, width 16%, wmin 100");
 
-		add(ribbon, "growx, span, wrap");
+		JScrollPane ribbonScroll = new JScrollPane(ribbon,
+				JScrollPane.VERTICAL_SCROLLBAR_NEVER,
+				JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED) {
+			@Override
+			public Dimension getPreferredSize() {
+				Dimension d = super.getPreferredSize();
+				d.height += getHorizontalScrollBar().getPreferredSize().height;
+				return d;
+			}
+		};
+		ribbonScroll.setBorder(null);
+		add(ribbonScroll, "growx, span, wrap");
 
 		// Create rotation control
 		rotationControl = new ViewRotationControl(figure);

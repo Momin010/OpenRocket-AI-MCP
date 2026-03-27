@@ -108,7 +108,7 @@ public class RocketActions {
 	private final RocketAction exportSVGAction;
 	private final RocketAction toggleVisibilityAction;
 	private final RocketAction showAllComponentsAction;
-	private final RocketAction toggleStageActiveAction;
+	private final RocketAction toggleActiveAction;
 	private static final Translator trans = Application.getTranslator();
 	private static final Logger log = LoggerFactory.getLogger(RocketActions.class);
 
@@ -137,7 +137,7 @@ public class RocketActions {
 		this.exportSVGAction = new ExportSVGAction();
 		this.toggleVisibilityAction = new ToggleVisibilityAction();
 		this.showAllComponentsAction = new ShowAllComponentsAction();
-		this.toggleStageActiveAction = new ToggleStageActiveAction();
+		this.toggleActiveAction = new ToggleActiveAction();
 
 		OpenRocketClipboard.addClipboardListener(new ClipboardListener() {
 			@Override
@@ -189,7 +189,7 @@ public class RocketActions {
 		exportSVGAction.clipboardChanged();
 		toggleVisibilityAction.clipboardChanged();
 		showAllComponentsAction.clipboardChanged();
-		toggleStageActiveAction.clipboardChanged();
+		toggleActiveAction.clipboardChanged();
 	}
 	
 
@@ -255,8 +255,8 @@ public class RocketActions {
 		return showAllComponentsAction;
 	}
 
-	public Action getToggleStageActiveAction() {
-		return toggleStageActiveAction;
+	public Action getToggleActiveAction() {
+		return toggleActiveAction;
 	}
 
 	/**
@@ -1497,10 +1497,12 @@ public class RocketActions {
 	}
 
 	/**
-	 * Action to toggle the active state of selected AxialStage components in the current flight configuration.
+	 * Action to toggle the active state of selected components.
+	 * Currently supports AxialStage components via FlightConfiguration.
+	 * The popup menu in BasicFrame controls which component types this action is visible for.
 	 */
-	private class ToggleStageActiveAction extends RocketAction {
-		public ToggleStageActiveAction() {
+	private class ToggleActiveAction extends RocketAction {
+		public ToggleActiveAction() {
 			super.putValue(NAME, trans.get("RocketActions.StageActiveAct.DisableSelected"));
 			super.putValue(SHORT_DESCRIPTION, trans.get("RocketActions.StageActiveAct.ttip.DisableSelected"));
 			super.putValue(SMALL_ICON, Icons.COMPONENT_DISABLED);
@@ -1509,23 +1511,23 @@ public class RocketActions {
 
 		@Override
 		public void clipboardChanged() {
-			var stages = getSelectedStages();
-			super.setEnabled(!stages.isEmpty());
+			var components = new ArrayList<>(selectionModel.getSelectedComponents());
+			super.setEnabled(!components.isEmpty());
 
-			if (stages.isEmpty()) {
+			if (components.isEmpty()) {
 				return;
 			}
 
 			FlightConfiguration config = rocket.getSelectedConfiguration();
 			// isStageActive() returns false for childless stages, so check getChildCount separately
-			boolean anyNoChildren = stages.stream().anyMatch(s -> s.getChildCount() == 0);
-			boolean anyActive = stages.stream().anyMatch(s -> config.isStageActive(s.getStageNumber()));
+			boolean anyNoChildren = components.stream().anyMatch(s -> s.getChildCount() == 0);
+			boolean anyActive = components.stream().anyMatch(s -> config.isStageActive(s.getStageNumber()));
 
 			if (anyNoChildren || anyActive) {
 				super.putValue(NAME, trans.get("RocketActions.StageActiveAct.DisableSelected"));
 				super.putValue(SMALL_ICON, Icons.COMPONENT_DISABLED);
 
-				String cannotDisableReason = getCannotDisableReason(stages, config);
+				String cannotDisableReason = getCannotDisableReason(components, config);
 				if (cannotDisableReason != null) {
 					super.setEnabled(false);
 					super.putValue(SHORT_DESCRIPTION, cannotDisableReason);
@@ -1543,59 +1545,57 @@ public class RocketActions {
 
 		@Override
 		public void actionPerformed(ActionEvent e) {
-			var stages = getSelectedStages();
-			if (stages.isEmpty()) {
+			var components = new ArrayList<>(selectionModel.getSelectedComponents());
+			if (components.isEmpty()) {
 				return;
 			}
 
 			FlightConfiguration config = rocket.getSelectedConfiguration();
-			boolean shouldActivate = stages.stream().noneMatch(s -> config.isStageActive(s.getStageNumber()));
+			boolean shouldActivate = components.stream().noneMatch(s -> config.isStageActive(s.getStageNumber()));
 			FlightConfigurationId configId = config.getFlightConfigurationID();
 
-			stages.forEach(stage -> {
-				boolean isActive = config.isStageActive(stage.getStageNumber());
-				if (isActive != shouldActivate) {
-					config.toggleStage(stage.getStageNumber());
+			components.forEach(component -> {
+				if (component instanceof AxialStage stage) {
+					boolean isActive = config.isStageActive(stage.getStageNumber());
+					if (isActive != shouldActivate) {
+						config.toggleStage(stage.getStageNumber());
+					}
 				}
+				// Future: handle other component types here
 			});
 
 			rocket.fireComponentChangeEvent(ComponentChangeEvent.AEROMASS_CHANGE | ComponentChangeEvent.MOTOR_CHANGE, configId);
 		}
 
 		/**
-		 * Returns the reason why the selected stages cannot be disabled, or null if they can be disabled.
-		 * Mirrors the conditions in StageSelector: stages with no children are always non-toggleable,
-		 * and the last active stage cannot be deactivated.
+		 * Returns the reason why the selected components cannot be disabled, or null if they can.
+		 * AxialStage-specific constraints: no children, or last active stage.
+		 * Future component types can add their own constraints here.
 		 */
-		private String getCannotDisableReason(List<AxialStage> stages, FlightConfiguration config) {
-			// Mirrors StageSelector's StageAction: stages with no children are never toggleable
-			if (stages.stream().anyMatch(s -> s.getChildCount() == 0)) {
+		private String getCannotDisableReason(List<RocketComponent> components, FlightConfiguration config) {
+			// Stages with no children are never toggleable (mirrors StageSelector's StageAction)
+			if (components.stream().anyMatch(s -> s.getChildCount() == 0)) {
 				return trans.get("RocketActions.StageActiveAct.ttip.CannotDisableNoChildren");
 			}
 
-			// Mirrors StageSelector: cannot disable if it would leave no active stages with children
-			long totalActiveWithChildren = rocket.getAllChildAssemblies().stream()
-					.filter(AxialStage.class::isInstance)
-					.map(AxialStage.class::cast)
-					.filter(s -> config.isStageActive(s.getStageNumber()))
-					.count();
+			// AxialStage-specific: cannot disable if it would leave no active stages
+			if (components.stream().anyMatch(AxialStage.class::isInstance)) {
+				long totalActive = rocket.getAllChildAssemblies().stream()
+						.filter(AxialStage.class::isInstance)
+						.map(AxialStage.class::cast)
+						.filter(s -> config.isStageActive(s.getStageNumber()))
+						.count();
 
-			long selectedActiveWithChildren = stages.stream()
-					.filter(s -> config.isStageActive(s.getStageNumber()))
-					.count();
+				long selectedActive = components.stream()
+						.filter(s -> config.isStageActive(s.getStageNumber()))
+						.count();
 
-			if (selectedActiveWithChildren > 0 && totalActiveWithChildren - selectedActiveWithChildren <= 0) {
-				return trans.get("RocketActions.StageActiveAct.ttip.CannotDisableLastStage");
+				if (selectedActive > 0 && totalActive - selectedActive <= 0) {
+					return trans.get("RocketActions.StageActiveAct.ttip.CannotDisableLastStage");
+				}
 			}
 
 			return null;
-		}
-
-		private List<AxialStage> getSelectedStages() {
-			return selectionModel.getSelectedComponents().stream()
-					.filter(AxialStage.class::isInstance)
-					.map(AxialStage.class::cast)
-					.toList();
 		}
 	}
 }

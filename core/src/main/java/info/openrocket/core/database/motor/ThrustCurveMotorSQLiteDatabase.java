@@ -36,7 +36,7 @@ import java.util.Map;
  */
 public final class ThrustCurveMotorSQLiteDatabase {
 	private static final Logger log = LoggerFactory.getLogger(ThrustCurveMotorSQLiteDatabase.class);
-	private static final int SCHEMA_VERSION = 2;
+	private static final int SCHEMA_VERSION = 3;
 	private static final int MIN_SUPPORTED_SCHEMA_VERSION = 2;
 
 	private ThrustCurveMotorSQLiteDatabase() {

@@ -1590,7 +1590,7 @@ public class RocketActions {
 				// Future: handle other component types here
 			});
 
-			rocket.fireComponentChangeEvent(ComponentChangeEvent.AEROMASS_CHANGE | ComponentChangeEvent.MOTOR_CHANGE, configId);
+			rocket.fireComponentChangeEvent(ComponentChangeEvent.AEROMASS_CHANGE | ComponentChangeEvent.MOTOR_CHANGE | ComponentChangeEvent.TREE_CHANGE_CHILDREN, configId);
 		}
 
 		/**

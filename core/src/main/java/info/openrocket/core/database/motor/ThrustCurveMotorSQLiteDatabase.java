@@ -36,7 +36,7 @@ import java.util.Map;
  */
 public final class ThrustCurveMotorSQLiteDatabase {
 	private static final Logger log = LoggerFactory.getLogger(ThrustCurveMotorSQLiteDatabase.class);
-	private static final int SCHEMA_VERSION = 2;
+	private static final int SCHEMA_VERSION = 3;
 	private static final int MIN_SUPPORTED_SCHEMA_VERSION = 2;
 
 	private ThrustCurveMotorSQLiteDatabase() {
@@ -992,16 +992,8 @@ public final class ThrustCurveMotorSQLiteDatabase {
 	}
 
 	private static boolean columnExists(Connection connection, String tableName, String columnName) throws SQLException {
-		String escapedTableName = tableName.replace("'", "''");
-		try (Statement stmt = connection.createStatement();
-			 ResultSet rs = stmt.executeQuery("PRAGMA table_info('" + escapedTableName + "')")) {
-			while (rs.next()) {
-				String name = rs.getString("name");
-				if (name != null && columnName.equalsIgnoreCase(name)) {
-					return true;
-				}
-			}
-			return false;
+		try (ResultSet rs = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
+			return rs.next();
 		}
 	}
 

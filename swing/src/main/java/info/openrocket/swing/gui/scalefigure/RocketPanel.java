@@ -59,6 +59,7 @@ import info.openrocket.swing.gui.util.SwingPreferences;
 import info.openrocket.core.startup.Application;
 import info.openrocket.swing.gui.simulation.SimulationWorker;
 import info.openrocket.swing.gui.util.FileHelper;
+import info.openrocket.swing.gui.util.GUIUtil;
 import info.openrocket.swing.gui.util.Icons;
 import info.openrocket.swing.gui.util.SwingPreferences;
 import info.openrocket.swing.utils.CustomClickCountListener;
@@ -1107,7 +1108,7 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 
 	private void handleDoubleComponentClick(RocketComponent[] clicked, MouseEvent event, List<RocketComponent> selectedComponents) {
 		// Multi-component edit if shift/meta key is pressed
-		if (!selectedComponents.isEmpty() && (event.isShiftDown() || event.isMetaDown())) {
+		if (!selectedComponents.isEmpty() && (event.isShiftDown() || GUIUtil.isMenuShortcutDown(event))) {
 			List<TreePath> paths = new ArrayList<>(Arrays.asList(selectionModel.getSelectionPaths()));
 			RocketComponent component = selectedComponents.get(selectedComponents.size() - 1);
 			component.clearConfigListeners();
@@ -1154,7 +1155,7 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 
 	private void handleSingleComponentClick(RocketComponent[] clicked, MouseEvent event, List<RocketComponent> selectedComponents) {
 		// If the shift-button is held, add a newly clicked component to the selection path
-		if (event.isShiftDown() || event.isMetaDown()) {
+		if (event.isShiftDown() || GUIUtil.isMenuShortcutDown(event)) {
 			List<TreePath> paths = new ArrayList<>(Arrays.asList(selectionModel.getSelectionPaths()));
 			for (int i = 0; i < clicked.length; i++) {
 				if (!selectedComponents.contains(clicked[i])) {

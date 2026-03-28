@@ -1,5 +1,5 @@
 Motor Database Schema (SQLite)
-=============================
+==============================
 
 OpenRocket stores its built-in motor database as a SQLite file `motors.db` in the user motor library directory
 (`SystemInfo.getOpenRocketMotorLibraryDirectory()`).

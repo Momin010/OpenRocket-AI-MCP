@@ -136,7 +136,60 @@ public class ThrustCurveMotorSQLiteDatabaseTest {
 
 		SQLException exception = assertThrows(SQLException.class,
 				() -> ThrustCurveMotorSQLiteDatabase.validateDatabase(dbFile));
-		assertFalse(exception.getMessage().contains("missing required columns"));
+		assertTrue(exception.getMessage().contains("missing required columns"));
+	}
+
+	@Test
+	public void testValidateDatabaseSchemaV2AllColumns() throws Exception {
+		Class.forName("org.sqlite.JDBC");
+		File dbFile = tempDir.resolve("v2.db").toFile();
+		try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+				Statement stmt = connection.createStatement()) {
+			stmt.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+			stmt.execute("INSERT INTO meta (key, value) VALUES ('schema_version', '2')");
+			stmt.execute("CREATE TABLE manufacturers (id INTEGER PRIMARY KEY, name TEXT, abbrev TEXT)");
+			stmt.execute("CREATE TABLE motors (" +
+					"id INTEGER PRIMARY KEY, manufacturer_id INTEGER, tc_motor_id TEXT, designation TEXT, " +
+					"common_name TEXT, impulse_class TEXT, diameter REAL, length REAL, total_impulse REAL, " +
+					"avg_thrust REAL, max_thrust REAL, burn_time REAL, propellant_weight REAL, " +
+					"total_weight REAL, type TEXT, delays TEXT, case_info TEXT, prop_info TEXT, " +
+					"sparky INTEGER, info_url TEXT, data_files TEXT, updated_on TEXT)");
+			stmt.execute("CREATE TABLE thrust_curves (" +
+					"id INTEGER PRIMARY KEY, motor_id INTEGER, tc_simfile_id TEXT, source TEXT, " +
+					"format TEXT, license TEXT, info_url TEXT, data_url TEXT, " +
+					"total_impulse REAL, avg_thrust REAL, max_thrust REAL, burn_time REAL)");
+			stmt.execute("CREATE TABLE thrust_data (" +
+					"id INTEGER PRIMARY KEY, curve_id INTEGER, time_seconds REAL, force_newtons REAL)");
+		}
+
+		ThrustCurveMotorSQLiteDatabase.validateDatabase(dbFile);
+	}
+
+	@Test
+	public void testValidateDatabaseSchemaV3AllColumns() throws Exception {
+		Class.forName("org.sqlite.JDBC");
+		File dbFile = tempDir.resolve("v3.db").toFile();
+		try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+				Statement stmt = connection.createStatement()) {
+			stmt.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+			stmt.execute("INSERT INTO meta (key, value) VALUES ('schema_version', '3')");
+			stmt.execute("CREATE TABLE manufacturers (id INTEGER PRIMARY KEY, name TEXT, abbrev TEXT)");
+			stmt.execute("CREATE TABLE motors (" +
+					"id INTEGER PRIMARY KEY, manufacturer_id INTEGER, tc_motor_id TEXT, designation TEXT, " +
+					"common_name TEXT, impulse_class TEXT, diameter REAL, length REAL, total_impulse REAL, " +
+					"avg_thrust REAL, max_thrust REAL, burn_time REAL, propellant_weight REAL, " +
+					"total_weight REAL, type TEXT, delays TEXT, case_info TEXT, prop_info TEXT, " +
+					"sparky INTEGER, info_url TEXT, data_files TEXT, updated_on TEXT, " +
+					"description TEXT, source TEXT)");
+			stmt.execute("CREATE TABLE thrust_curves (" +
+					"id INTEGER PRIMARY KEY, motor_id INTEGER, tc_simfile_id TEXT, source TEXT, " +
+					"format TEXT, license TEXT, info_url TEXT, data_url TEXT, " +
+					"total_impulse REAL, avg_thrust REAL, max_thrust REAL, burn_time REAL)");
+			stmt.execute("CREATE TABLE thrust_data (" +
+					"id INTEGER PRIMARY KEY, curve_id INTEGER, time_seconds REAL, force_newtons REAL)");
+		}
+
+		ThrustCurveMotorSQLiteDatabase.validateDatabase(dbFile);
 	}
 
 	private ThrustCurveMotor findByDesignation(List<ThrustCurveMotor> motors, String designation) {

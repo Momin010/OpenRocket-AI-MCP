@@ -1,5 +1,5 @@
 Motor Database Updates (Security)
-================================
+=================================
 
 OpenRocket can optionally check for a newer motor database at startup and install it into the user's motor library
 directory. The update flow is implemented in:
@@ -54,27 +54,34 @@ Security properties
 The updater takes several precautions when downloading and installing data:
 
 - HTTPS-only and redirect constraints
+
   - Downloads use HTTPS.
   - Redirects are handled manually and refused if they switch to non-HTTPS or to a host outside the updater allowlist
     (`openrocket.info`, `openrocket.github.io`).
 
 - Offline authenticity (Ed25519 signature)
+
   - `metadata.json` includes a base64 Ed25519 signature (`sig`) that is verified using a public key embedded in
     OpenRocket. This prevents attackers from substituting a malicious metadata+database pair even if the server is
     compromised, as long as the signing key remains secure.
 
 - Integrity verification (SHA-256)
+
   - The metadata includes `sha256_gz` (64 hex chars), which must match the SHA-256 of the downloaded `motors.db.gz`.
 
 - Schema validation before install
+
   - The downloaded database is validated via `ThrustCurveMotorSQLiteDatabase.validateDatabase()` before replacing the
     local file. This prevents installing a non-SQLite file or a database missing required tables/columns.
 
 - Resource limits
+
   - Hard byte limits are enforced for:
+
     - remote metadata size
     - downloaded compressed size
     - decompressed database size
+
   - This reduces risk from oversized downloads and decompression bombs.
 
 Signature format
@@ -95,11 +102,13 @@ Limitations and threat model
 ----------------------------
 
 - Rollback / freeze attacks
+
   - An attacker who can intercept traffic can prevent updates by serving older (but correctly signed) metadata.
   - OpenRocket never installs a database with a lower `database_version`, but it also cannot force an update without
     reaching the authentic endpoint.
 
 - Parsing vulnerabilities
+
   - The update mechanism installs data files only, and does not execute code from the downloaded artifacts.
   - However, a malicious SQLite file could still attempt to exploit vulnerabilities in the SQLite/JDBC stack. Keeping
     dependencies up to date and adding signature verification are the strongest mitigations.

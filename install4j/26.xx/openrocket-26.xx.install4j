@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<install4j version="12.0" transformSequenceNumber="12">
+<install4j version="12.0.3" transformSequenceNumber="12">
   <directoryPresets config="${compiler:JAR_FILE_LOCATION}" />
   <application name="OpenRocket" applicationId="8434-9327-1469-6373" mediaDir="media" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}" shortName="OpenRocket" publisher="OpenRocket" publisherWeb="http://openrocket.info" version="26.xx" allPathsRelative="true" convertDotsToUnderscores="false" macVolumeId="5f58a2be20d8e22f" javaMinVersion="17" javaMaxVersion="17" jdkMode="jdk" jdkName="JDK 17.0">
     <variables>
@@ -48,6 +48,23 @@
           <archive location="jar/${compiler:JAR_NAME}" failOnError="false" />
         </classPath>
       </java>
+      <infoPlist>&lt;key&gt;UTExportedTypeDeclarations&lt;/key&gt;
+&lt;array&gt;
+    &lt;dict&gt;
+        &lt;key&gt;UTTypeIdentifier&lt;/key&gt;
+        &lt;string&gt;info.openrocket.ork&lt;/string&gt;
+        &lt;key&gt;UTTypeConformsTo&lt;/key&gt;
+        &lt;array&gt;&lt;string&gt;public.data&lt;/string&gt;&lt;/array&gt;
+        &lt;key&gt;UTTypeDescription&lt;/key&gt;
+        &lt;string&gt;OpenRocket Data File&lt;/string&gt;
+        &lt;key&gt;UTTypeTagSpecification&lt;/key&gt;
+        &lt;dict&gt;
+            &lt;key&gt;public.filename-extension&lt;/key&gt;
+            &lt;array&gt;&lt;string&gt;ork&lt;/string&gt;&lt;/array&gt;
+        &lt;/dict&gt;
+    &lt;/dict&gt;
+&lt;/array&gt;
+</infoPlist>
       <iconImageFiles>
         <file path="../../swing/build/resources/main/pix/icon/icon-016.png" />
         <file path="../../swing/build/resources/main/pix/icon/icon-032.png" />
@@ -57,7 +74,7 @@
         <file path="../../swing/build/resources/main/pix/icon/icon-256.png" />
       </iconImageFiles>
       <macStaticAssociations>
-        <fileAssociation extension="ork" description="OpenRocket Design" iconFile="../../swing/build/resources/main/pix/icon/icon-macos.icns" role="editor" />
+        <fileAssociation extension="ork" description="OpenRocket Design" iconFile="../../swing/src/main/resources/pix/icon/icon-macos.icns" role="editor" />
       </macStaticAssociations>
     </launcher>
   </launchers>

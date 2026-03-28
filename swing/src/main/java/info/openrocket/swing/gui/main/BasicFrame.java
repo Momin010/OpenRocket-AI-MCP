@@ -204,6 +204,7 @@ private static final Translator trans = Application.getTranslator();
 
 	public static BasicFrame lastFrameInstance = null;		// Latest BasicFrame that was created
 	private static boolean quitCalled = false;				// Keeps track whether the quit action has been called
+	private static boolean reopenInProgress = false;		// Guards against re-entrant reopen() calls from EDT event pumping
 
 
 	/**
@@ -2366,25 +2367,34 @@ private static final Translator trans = Application.getTranslator();
 	 * @return the BasicFrame that was created
 	 */
 	public static BasicFrame reopen() {
-		if (!Application.getPreferences().isAutoOpenLastDesignOnStartupEnabled()) {
-			return BasicFrame.newAction();
-		} else {
-			String lastFile = MRUDesignFile.getInstance().getLastEditedDesignFile();
-			if (lastFile != null) {
-				log.info("Opening last design file: " + lastFile);
-				BasicFrame frame = BasicFrame.open(new File(lastFile), null);
-				if (frame == null) {
-					MRUDesignFile.getInstance().removeFile(lastFile);
+		// Guard against re-entrant calls caused by modal dialogs pumping the EDT
+		// (e.g. MotorDatabaseUpdateChecker or BlockingMotorDatabaseProvider showing progress dialogs)
+		if (reopenInProgress) {
+			log.debug("Reopen already in progress, ignoring re-entrant call");
+			return null;
+		}
+		reopenInProgress = true;
+		try {
+			if (!Application.getPreferences().isAutoOpenLastDesignOnStartupEnabled()) {
+				return BasicFrame.newAction();
+			} else {
+				String lastFile = MRUDesignFile.getInstance().getLastEditedDesignFile();
+				if (lastFile != null) {
+					log.info("Opening last design file: " + lastFile);
+					BasicFrame frame = BasicFrame.open(new File(lastFile), null);
+					if (frame == null) {
+						MRUDesignFile.getInstance().removeFile(lastFile);
+						return BasicFrame.newAction();
+					} else {
+						MRUDesignFile.getInstance().addFile(lastFile);
+						return frame;
+					}
+				} else {
 					return BasicFrame.newAction();
 				}
-				else {
-					MRUDesignFile.getInstance().addFile(lastFile);
-					return frame;
-				}
 			}
-			else {
-				return BasicFrame.newAction();
-			}
+		} finally {
+			reopenInProgress = false;
 		}
 	}
 

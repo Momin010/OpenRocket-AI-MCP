@@ -80,6 +80,7 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JRadioButton;
 import javax.swing.JSeparator;
 import javax.swing.JPopupMenu;
@@ -121,6 +122,8 @@ import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.image.BufferedImage;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
@@ -763,7 +766,30 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 		final ConfigurationComboBox configComboBox = new ConfigurationComboBox(rkt);
 		ribbon.add(configComboBox, "cell 8 1, width 16%, wmin 100");
 
-		add(ribbon, "growx, span, wrap");
+		JScrollPane ribbonScroll = new JScrollPane(ribbon,
+				JScrollPane.VERTICAL_SCROLLBAR_NEVER,
+				JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED) {
+			@Override
+			public Dimension getPreferredSize() {
+				Dimension d = super.getPreferredSize();
+				if (getHorizontalScrollBar().isVisible()) {
+					d.height += getHorizontalScrollBar().getPreferredSize().height;
+				}
+				return d;
+			}
+		};
+		ribbonScroll.setBorder(null);
+		ribbonScroll.getHorizontalScrollBar().addComponentListener(new ComponentAdapter() {
+			@Override
+			public void componentShown(ComponentEvent e) {
+				RocketPanel.this.revalidate();
+			}
+			@Override
+			public void componentHidden(ComponentEvent e) {
+				RocketPanel.this.revalidate();
+			}
+		});
+		add(ribbonScroll, "growx, span, wrap");
 
 		// Create rotation control
 		rotationControl = new ViewRotationControl(figure);

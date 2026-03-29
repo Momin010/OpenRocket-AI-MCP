@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <install4j version="12.0.3" transformSequenceNumber="12">
-  <directoryPresets config="${compiler:JAR_FILE_LOCATION}" />
+  <directoryPresets config="../../../remote/Windows-ork-Preview/src/OrkThumbnailHandler/bin/x64" />
   <application name="OpenRocket" applicationId="8434-9327-1469-6373" mediaDir="media" mediaFilePattern="${compiler:sys.shortName}_${compiler:sys.platform}" shortName="OpenRocket" publisher="OpenRocket" publisherWeb="http://openrocket.info" version="26.xx" allPathsRelative="true" convertDotsToUnderscores="false" macVolumeId="5f58a2be20d8e22f" javaMinVersion="17" javaMaxVersion="17" jdkMode="jdk" jdkName="JDK 17.0">
     <variables>
       <variable name="ISSUER_ID" value="8177d3a7-3edd-476c-b4fd-9d2bf8fbac50" hidden="true" />
@@ -27,9 +27,11 @@
   <files>
     <mountPoints>
       <mountPoint id="252" location="jar" />
+      <mountPoint id="254" />
     </mountPoints>
     <entries>
       <fileEntry mountPoint="252" file="${compiler:JAR_FILE_LOCATION}" />
+      <dirEntry mountPoint="254" file="./Windows_resources" entryMode="subdir" subDirectory="shell-extension" />
     </entries>
   </files>
   <launchers>
@@ -239,6 +241,13 @@ return console.askOkCancel(message, true);
                 </serializedBean>
                 <visibilityScript>Util.isMacOS()</visibilityScript>
               </formComponent>
+              <formComponent id="261" beanClass="com.install4j.runtime.beans.formcomponents.CheckboxComponent">
+                <serializedBean>
+                  <property name="checkboxText" type="string">Register Windows Explorer thumbnail previews for .ork files</property>
+                  <property name="initiallySelected" type="boolean" value="true" />
+                  <property name="variableName" type="string">installThumbnailHandler</property>
+                </serializedBean>
+              </formComponent>
             </formComponents>
           </screen>
           <screen id="15" beanClass="com.install4j.runtime.beans.screens.InstallationScreen" rollbackBarrier="true" rollbackBarrierExitCode="0">
@@ -329,6 +338,27 @@ return console.askOkCancel(message, true);
                   <property name="itemName" type="string">${compiler:sys.fullName} ${compiler:sys.version}</property>
                 </serializedBean>
               </action>
+              <action id="260" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" actionElevationType="elevated" rollbackBarrierExitCode="0" errorMessage="Failed to register the .ork thumbnail preview handler. Explorer thumbnails for .ork files may not be available. OpenRocket will still work normally.">
+                <serializedBean>
+                  <property name="arguments" type="array" elementType="string" length="2">
+                    <element index="0">/codebase</element>
+                    <element index="1">${installer:sys.installationDir}\shell-extension\OrkThumbnailHandler.dll</element>
+                  </property>
+                  <property name="executable">
+                    <object class="java.io.File">
+                      <string>${installer:sys.windowsDir}/Microsoft.NET/Framework64/v4.0.30319/regasm.exe</string>
+                    </object>
+                  </property>
+                  <property name="keepConsoleWindow" type="boolean" value="true" />
+                  <property name="wait" type="boolean" value="true" />
+                  <property name="workingDirectory">
+                    <object class="java.io.File">
+                      <string>shell-extension</string>
+                    </object>
+                  </property>
+                </serializedBean>
+                <condition>return ((Boolean)context.getVariable("installThumbnailHandler")).booleanValue();</condition>
+              </action>
             </actions>
             <formComponents>
               <formComponent id="16" beanClass="com.install4j.runtime.beans.formcomponents.ProgressComponent">
@@ -386,6 +416,25 @@ return console.askYesNo(message, true);
           </screen>
           <screen id="27" beanClass="com.install4j.runtime.beans.screens.UninstallationScreen" rollbackBarrierExitCode="0">
             <actions>
+              <action id="263" beanClass="com.install4j.runtime.beans.actions.misc.RunExecutableAction" actionElevationType="elevated" rollbackBarrierExitCode="0" errorMessage="Failed to unregister the .ork thumbnail preview handler.">
+                <serializedBean>
+                  <property name="arguments" type="array" elementType="string" length="2">
+                    <element index="0">/unregister</element>
+                    <element index="1">${installer:sys.installationDir}\shell-extension\OrkThumbnailHandler.dll</element>
+                  </property>
+                  <property name="executable">
+                    <object class="java.io.File">
+                      <string>${installer:sys.windowsDir}/Microsoft.NET/Framework64/v4.0.30319/regasm.exe</string>
+                    </object>
+                  </property>
+                  <property name="wait" type="boolean" value="true" />
+                  <property name="workingDirectory">
+                    <object class="java.io.File">
+                      <string>shell-extension</string>
+                    </object>
+                  </property>
+                </serializedBean>
+              </action>
               <action id="29" beanClass="com.install4j.runtime.beans.actions.UninstallFilesAction" actionElevationType="elevated" rollbackBarrierExitCode="0" />
             </actions>
             <formComponents>

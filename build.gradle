@@ -103,10 +103,8 @@ subprojects {
     }
 
     spotbugs {
-        // Note: string-to-enum coercion is deprecated in Gradle 9, will error in Gradle 10.
-        // TODO: Replace with Effort.MAX / Confidence.HIGH when upgrading to Gradle 10+.
-        effort = 'max'
-        reportLevel = 'high'
+        effort = com.github.spotbugs.snom.Effort.valueOf('MAX')
+        reportLevel = com.github.spotbugs.snom.Confidence.valueOf('HIGH')
         excludeFilter = rootProject.file('config/spotbugs/excludeFilter.xml')
     }
 

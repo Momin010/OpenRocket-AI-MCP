@@ -1,10 +1,14 @@
 package info.openrocket.swing.gui.simulation;
 
+import static info.openrocket.core.util.StringUtils.escapeHtml;
+
 import java.awt.Color;
 import java.awt.Dialog.ModalityType;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
@@ -24,6 +28,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.MenuElement;
 import javax.swing.SwingUtilities;
+import javax.swing.ToolTipManager;
 
 import info.openrocket.core.aerodynamics.lookup.MachAoALookup;
 import info.openrocket.core.document.OpenRocketDocument;
@@ -66,7 +71,7 @@ class SimulationOptionsPanel extends JPanel {
 	final Simulation simulation;
 	private final SimulationOptions options;
 	
-	private JLabel aerodynamicLookupSummaryLabel;
+	private JLabel aerodynamicLookupSummaryIconLabel;
 	
 	private JPanel currentExtensions;
 	final JPopupMenu extensionMenu;
@@ -154,11 +159,12 @@ class SimulationOptionsPanel extends JPanel {
 		/// Configure
 		JButton configureLookupButton = new JButton(trans.get("AerodynamicLookupDialog.btn.configure"));
 		configureLookupButton.addActionListener(e -> openLookupDialog());
-		subsub.add(configureLookupButton, "wrap");
+		subsub.add(configureLookupButton);
 
-		aerodynamicLookupSummaryLabel = new JLabel();
-		aerodynamicLookupSummaryLabel.setForeground(infoTextColor);
-		subsub.add(aerodynamicLookupSummaryLabel, "gapleft para, spanx, growx, wrap para");
+		aerodynamicLookupSummaryIconLabel = new JLabel(Icons.HELP);
+		aerodynamicLookupSummaryIconLabel.setToolTipText(buildLookupSummaryTooltip());
+		configureImmediateTooltipDelay(aerodynamicLookupSummaryIconLabel);
+		subsub.add(aerodynamicLookupSummaryIconLabel, "gapleft rel, wrap para");
 
 		sub.add(subsub, "spanx, wrap para");
 
@@ -494,17 +500,10 @@ class SimulationOptionsPanel extends JPanel {
 	}
 
 	private void updateLookupSummary() {
-		if (aerodynamicLookupSummaryLabel == null) {
+		if (aerodynamicLookupSummaryIconLabel == null) {
 			return;
 		}
-		String dragDetail = buildLookupDetail(options.getDragLookupCsvPath(), options.getDragLookupTable());
-		String stabilityDetail = buildLookupDetail(options.getStabilityLookupCsvPath(), options.getStabilityLookupTable());
-		String summary = "<html>"
-				+ String.format(trans.get("AerodynamicLookupDialog.lbl.summaryDrag"), dragDetail)
-				+ "<br>"
-				+ String.format(trans.get("AerodynamicLookupDialog.lbl.summaryStability"), stabilityDetail)
-				+ "</html>";
-		aerodynamicLookupSummaryLabel.setText(summary);
+		aerodynamicLookupSummaryIconLabel.setToolTipText(buildLookupSummaryTooltip());
 	}
 
 	private String buildLookupDetail(Path path, MachAoALookup table) {
@@ -514,6 +513,41 @@ class SimulationOptionsPanel extends JPanel {
 		String fileName = path.getFileName() != null ? path.getFileName().toString() : path.toString();
 		String detail = AerodynamicLookupDialog.formatLookupSummary(trans, table);
 		return fileName + " - " + detail;
+	}
+
+	/**
+	 * Build the tooltip content for the aerodynamic lookup info icon.
+	 */
+	private String buildLookupSummaryTooltip() {
+		String dragDetail = buildLookupDetail(options.getDragLookupCsvPath(), options.getDragLookupTable());
+		String stabilityDetail = buildLookupDetail(options.getStabilityLookupCsvPath(), options.getStabilityLookupTable());
+		return "<html>"
+				+ escapeHtml(String.format(trans.get("AerodynamicLookupDialog.lbl.summaryDrag"), dragDetail))
+				+ "<br>"
+				+ escapeHtml(String.format(trans.get("AerodynamicLookupDialog.lbl.summaryStability"), stabilityDetail))
+				+ "</html>";
+	}
+
+	/**
+	 * Make a tooltip appear immediately for a single component without changing the
+	 * application's normal tooltip delay outside hover.
+	 */
+	private void configureImmediateTooltipDelay(JComponent component) {
+		component.addMouseListener(new MouseAdapter() {
+			private final ToolTipManager toolTipManager = ToolTipManager.sharedInstance();
+			private int previousInitialDelay = toolTipManager.getInitialDelay();
+
+			@Override
+			public void mouseEntered(MouseEvent e) {
+				previousInitialDelay = toolTipManager.getInitialDelay();
+				toolTipManager.setInitialDelay(0);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e) {
+				toolTipManager.setInitialDelay(previousInitialDelay);
+			}
+		});
 	}
 	
 	private void updateCurrentExtensions() {

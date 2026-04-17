@@ -288,10 +288,14 @@ public class ThrustCurveMotor implements Motor, Comparable<ThrustCurveMotor>, Se
 				motor.designation = motor.code;
 			}
 
-			// Strip delay suffix from common name if present (e.g. "B6-0" -> "B6").
-			// Some data sources incorrectly include the delay in the common name.
-			if (!motor.commonName.isEmpty() && motor.commonName.matches(".*-([0-9]+|[pP])$")) {
-				motor.commonName = motor.commonName.substring(0, motor.commonName.lastIndexOf('-'));
+			// Normalize common name: if it matches the standard motor-designation pattern
+			// (e.g. "B6-0", "B6W", "H128W"), reduce it to just the letter+digits part
+			// ("B6", "H128"). Non-standard names (e.g. "RCS 18/20") are left unchanged.
+			if (!motor.commonName.isEmpty()) {
+				Matcher cnMatcher = SIMPLIFY_PATTERN.matcher(motor.commonName);
+				if (cnMatcher.matches()) {
+					motor.commonName = cnMatcher.group(1);
+				}
 			}
 			if (motor.commonName.isEmpty()) {
 				motor.commonName = simplifyDesignation(motor.designation);

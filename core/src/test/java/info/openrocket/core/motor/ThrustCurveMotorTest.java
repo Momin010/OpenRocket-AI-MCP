@@ -201,4 +201,37 @@ public class ThrustCurveMotorTest {
 		assertEquals(ThrustCurveMotor.Builder.simplifyDesignation("Micro Maxx II"), "MicroMaxxII");
 	}
 
+	private ThrustCurveMotor buildSimpleMotor(String designation, String commonName) {
+		return new ThrustCurveMotor.Builder()
+				.setManufacturer(Manufacturer.getManufacturer("TestCo"))
+				.setDesignation(designation)
+				.setCommonName(commonName)
+				.setMotorType(Motor.Type.SINGLE)
+				.setStandardDelays(new double[]{})
+				.setDiameter(0.018)
+				.setLength(0.07)
+				.setTimePoints(new double[]{0.0, 1.0})
+				.setThrustPoints(new double[]{0.0, 0.0})
+				.setCGPoints(new CoordinateIF[]{
+						new Coordinate(0.035, 0, 0, 0.05),
+						new Coordinate(0.035, 0, 0, 0.04)
+				})
+				.build();
+	}
+
+	@Test
+	public void testCommonNameDelayStripping() {
+		// Common name "B6-0" should be stripped to "B6"
+		assertEquals("B6", buildSimpleMotor("B6", "B6-0").getCommonName());
+		// Common name "C6-3" should be stripped to "C6"
+		assertEquals("C6", buildSimpleMotor("C6", "C6-3").getCommonName());
+		// Common name with plugged suffix "B6-P" should be stripped to "B6"
+		assertEquals("B6", buildSimpleMotor("B6", "B6-P").getCommonName());
+		// Already clean names should remain unchanged
+		assertEquals("B6", buildSimpleMotor("B6", "B6").getCommonName());
+		assertEquals("C6", buildSimpleMotor("C6", "C6").getCommonName());
+		// Complex names without delay suffix should be unchanged
+		assertEquals("RCS 18/20", buildSimpleMotor("RCS 18/20", "RCS 18/20").getCommonName());
+	}
+
 }

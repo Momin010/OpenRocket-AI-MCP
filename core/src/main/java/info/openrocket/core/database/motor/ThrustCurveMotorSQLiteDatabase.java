@@ -864,8 +864,9 @@ public final class ThrustCurveMotorSQLiteDatabase {
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < delays.length; i++) {
 			if (i > 0) sb.append(",");
-			// Format as integer if whole number
-			if (delays[i] == Math.floor(delays[i])) {
+			if (Double.isInfinite(delays[i])) {
+				sb.append("P");
+			} else if (delays[i] == Math.floor(delays[i])) {
 				sb.append((int) delays[i]);
 			} else {
 				sb.append(delays[i]);
@@ -878,13 +879,19 @@ public final class ThrustCurveMotorSQLiteDatabase {
 		if (delaysStr == null || delaysStr.trim().isEmpty()) {
 			return new double[0];
 		}
-		String[] parts = delaysStr.split(",");
+		// Split on commas or dashes — legacy databases used dashes as separators
+		String[] parts = delaysStr.split("[,\\-]+");
 		List<Double> delays = new ArrayList<>();
 		for (String part : parts) {
-			try {
-				delays.add(Double.parseDouble(part.trim()));
-			} catch (NumberFormatException e) {
-				// Skip invalid delay values
+			String trimmed = part.trim();
+			if (trimmed.equalsIgnoreCase("P") || trimmed.equalsIgnoreCase("plugged")) {
+				delays.add(Motor.PLUGGED_DELAY);
+			} else {
+				try {
+					delays.add(Double.parseDouble(trimmed));
+				} catch (NumberFormatException e) {
+					// Skip invalid delay values (e.g. "S", "M", "L" for hybrid motor delays)
+				}
 			}
 		}
 		return delays.stream().mapToDouble(Double::doubleValue).toArray();

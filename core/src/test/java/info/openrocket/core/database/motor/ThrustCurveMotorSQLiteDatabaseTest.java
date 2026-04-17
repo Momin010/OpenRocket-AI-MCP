@@ -192,6 +192,83 @@ public class ThrustCurveMotorSQLiteDatabaseTest {
 		ThrustCurveMotorSQLiteDatabase.validateDatabase(dbFile);
 	}
 
+	@Test
+	public void testRoundTripPluggedDelay() throws Exception {
+		ThrustCurveMotor motor = new ThrustCurveMotor.Builder()
+				.setManufacturer(Manufacturer.getManufacturer("TestCo"))
+				.setCode("B6")
+				.setCommonName("B6")
+				.setDesignation("B6")
+				.setMotorType(Motor.Type.SINGLE)
+				.setStandardDelays(new double[] { 0, 3, 5, Motor.PLUGGED_DELAY })
+				.setDiameter(0.018)
+				.setLength(0.07)
+				.setTimePoints(new double[] { 0.0, 0.5, 1.0 })
+				.setThrustPoints(new double[] { 0.0, 10.0, 0.0 })
+				.setCGPoints(new CoordinateIF[] {
+						new Coordinate(0.035, 0, 0, 0.05),
+						new Coordinate(0.035, 0, 0, 0.045),
+						new Coordinate(0.035, 0, 0, 0.04)
+				})
+				.setInitialMass(0.05)
+				.build();
+
+		File dbFile = tempDir.resolve("plugged.db").toFile();
+		ThrustCurveMotorSQLiteDatabase.writeDatabase(dbFile, List.of(motor));
+
+		List<ThrustCurveMotor> loaded = ThrustCurveMotorSQLiteDatabase.readDatabase(dbFile);
+		assertEquals(1, loaded.size());
+		double[] delays = loaded.get(0).getStandardDelays();
+		assertEquals(4, delays.length);
+		assertEquals(0.0, delays[0], 0.0);
+		assertEquals(3.0, delays[1], 0.0);
+		assertEquals(5.0, delays[2], 0.0);
+		assertTrue(Double.isInfinite(delays[3]), "Last delay should be PLUGGED_DELAY (Infinity)");
+	}
+
+	@Test
+	public void testParseDelaysDashSeparatedWithPlugged() throws Exception {
+		// Legacy databases store delays dash-separated (e.g. "0-3-5-7-P")
+		ThrustCurveMotor motor = new ThrustCurveMotor.Builder()
+				.setManufacturer(Manufacturer.getManufacturer("TestCo"))
+				.setCode("C6")
+				.setCommonName("C6")
+				.setDesignation("C6")
+				.setMotorType(Motor.Type.SINGLE)
+				.setStandardDelays(new double[] { 0, 3, 5, 7 })
+				.setDiameter(0.018)
+				.setLength(0.07)
+				.setTimePoints(new double[] { 0.0, 0.5, 1.0 })
+				.setThrustPoints(new double[] { 0.0, 20.0, 0.0 })
+				.setCGPoints(new CoordinateIF[] {
+						new Coordinate(0.035, 0, 0, 0.06),
+						new Coordinate(0.035, 0, 0, 0.055),
+						new Coordinate(0.035, 0, 0, 0.05)
+				})
+				.setInitialMass(0.06)
+				.build();
+
+		File dbFile = tempDir.resolve("dashdel.db").toFile();
+		ThrustCurveMotorSQLiteDatabase.writeDatabase(dbFile, List.of(motor));
+
+		// Manually overwrite the delays column with legacy dash-separated format
+		Class.forName("org.sqlite.JDBC");
+		try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+				java.sql.Statement stmt = conn.createStatement()) {
+			stmt.execute("UPDATE motors SET delays = '0-3-5-7-P'");
+		}
+
+		List<ThrustCurveMotor> loaded = ThrustCurveMotorSQLiteDatabase.readDatabase(dbFile);
+		assertEquals(1, loaded.size());
+		double[] delays = loaded.get(0).getStandardDelays();
+		assertEquals(5, delays.length);
+		assertEquals(0.0, delays[0], 0.0);
+		assertEquals(3.0, delays[1], 0.0);
+		assertEquals(5.0, delays[2], 0.0);
+		assertEquals(7.0, delays[3], 0.0);
+		assertTrue(Double.isInfinite(delays[4]), "Last delay should be PLUGGED_DELAY (Infinity)");
+	}
+
 	private ThrustCurveMotor findByDesignation(List<ThrustCurveMotor> motors, String designation) {
 		for (ThrustCurveMotor motor : motors) {
 			if (designation.equals(motor.getDesignation())) {

@@ -288,9 +288,11 @@ public class ThrustCurveMotor implements Motor, Comparable<ThrustCurveMotor>, Se
 				motor.designation = motor.code;
 			}
 
-			// If I don't have a motor common name (will be the case if I read the
-			// thrustcurve from a flle)
-			// apply the motor code simplification heuristics to generate a common name
+			// Strip delay suffix from common name if present (e.g. "B6-0" -> "B6").
+			// Some data sources incorrectly include the delay in the common name.
+			if (!motor.commonName.isEmpty() && motor.commonName.matches(".*-([0-9]+|[pP])$")) {
+				motor.commonName = motor.commonName.substring(0, motor.commonName.lastIndexOf('-'));
+			}
 			if (motor.commonName.isEmpty()) {
 				motor.commonName = simplifyDesignation(motor.designation);
 			}

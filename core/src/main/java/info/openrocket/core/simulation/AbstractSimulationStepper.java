@@ -96,7 +96,6 @@ public abstract class AbstractSimulationStepper implements SimulationStepper {
 		MutableCoordinate rot = tempRotation;
 		rot.set(status.getRocketRotationVelocity());
 		status.getRocketOrientationQuaternion().invRotateInPlace(rot);
-		store.thetaRotation.invRotateZInPlace(rot);
 
 		store.flightConditions.setRollRate(rot.getZ());
 		if (len < 0.001) {

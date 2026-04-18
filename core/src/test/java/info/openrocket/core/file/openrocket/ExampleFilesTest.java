@@ -164,10 +164,7 @@ public class ExampleFilesTest extends BaseTestCase {
 
 		EXPECTATIONS.put("Pods--powered with recovery deployment.ork", ExpectedWarnings.builder()
 				.openWarnings(0, 0, 0)
-				.simulationWarnings("BoosterOnly [Turn off Sustainer]", 0, 0, 0)
-				.simulationWarnings("Powered Pods with Recovery Devices", 0, 0, 0)
-				.simulationWarnings("Sustainer Only [Turn Off Booster]", 0, 0, 0)
-				.simulationWarnings("Unpowered Pods", 0, 0, 0)
+				.simulationWarnings("Simulation 1", 0, 0, 0)
 				.build());
 
 		// ----------------------------

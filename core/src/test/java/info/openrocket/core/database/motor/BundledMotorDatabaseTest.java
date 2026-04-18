@@ -2,6 +2,7 @@ package info.openrocket.core.database.motor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import info.openrocket.core.motor.ThrustCurveMotor;
 import org.junit.jupiter.api.BeforeAll;
@@ -77,5 +78,31 @@ public class BundledMotorDatabaseTest {
 		assertFalse(questB6WSets.isEmpty(), "No Quest B6W motor set found in the bundled database");
 		assertEquals("B6", questB6WSets.get(0).getCommonName(),
 				"Quest B6W common name should be 'B6', not '" + questB6WSets.get(0).getCommonName() + "'");
+	}
+
+	/**
+	 * Estes C6 must have exactly two thrust curves in the database and the full set
+	 * of standard delays: 0, 3, 5, 7, and Plugged.
+	 */
+	@Test
+	void testEstesC6HasTwoCurvesAndCorrectDelays() {
+		List<ThrustCurveMotorSet> c6Sets = motorSetDatabase.getMotorSets().stream()
+				.filter(set -> set.getDesignation().equals("C6")
+						&& set.getManufacturer().matches("Estes"))
+				.collect(Collectors.toList());
+
+		assertEquals(1, c6Sets.size(), "Expected exactly one Estes C6 motor set");
+		ThrustCurveMotorSet c6Set = c6Sets.get(0);
+
+		assertEquals(2, c6Set.getMotors().size(),
+				"Expected 2 thrust curves for Estes C6, found: " + c6Set.getMotors().size());
+
+		List<Double> delays = c6Set.getDelays();
+		assertTrue(delays.contains(0.0), "Missing delay 0 in Estes C6");
+		assertTrue(delays.contains(3.0), "Missing delay 3 in Estes C6");
+		assertTrue(delays.contains(5.0), "Missing delay 5 in Estes C6");
+		assertTrue(delays.contains(7.0), "Missing delay 7 in Estes C6");
+		assertTrue(delays.stream().anyMatch(d -> Double.isInfinite(d)),
+				"Missing PLUGGED delay in Estes C6");
 	}
 }

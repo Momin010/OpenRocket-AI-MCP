@@ -71,7 +71,7 @@ class SimulationOptionsPanel extends JPanel {
 	private static final int EXTENSION_DESCRIPTION_ROWS = 3;
 	private static final int EXTENSION_DESCRIPTION_MIN_HEIGHT = 60;
 	private static final int EXTENSION_LIST_HEIGHT = 140;
-	
+
 	private OpenRocketDocument document;
 	final Simulation simulation;
 	private final SimulationOptions options;
@@ -94,7 +94,7 @@ class SimulationOptionsPanel extends JPanel {
 	static {
 		initColors();
 	}
-	
+
 	SimulationOptionsPanel(OpenRocketDocument document, final Simulation simulation) {
 		super(new MigLayout(PANEL_LAYOUT));
 		this.document = document;
@@ -102,7 +102,7 @@ class SimulationOptionsPanel extends JPanel {
 		this.options = simulation.getOptions();
 
 		final SimulationOptions conditions = this.options;
-		
+
 		JPanel sub, subsub;
 		String tip;
 		JLabel label;
@@ -110,14 +110,14 @@ class SimulationOptionsPanel extends JPanel {
 		JSpinner spin;
 		UnitSelector unit;
 		BasicSlider slider;
-		
+
 		// // Simulation options
 		sub = new JPanel(new MigLayout(OPTIONS_SECTION_LAYOUT));
 		// // Simulator options
 		sub.setBorder(BorderFactory.createTitledBorder(trans
 				.get("simedtdlg.border.Simopt")));
 		this.add(sub, "growx, growy, aligny 0");
-		
+
 		// Separate panel for computation methods, as they use a different
 		// layout
 		subsub = new JPanel(new MigLayout("fillx, ins 0, gap rel rel", "[grow][min!][]"));
@@ -127,7 +127,7 @@ class SimulationOptionsPanel extends JPanel {
 		label = new JLabel(trans.get("simedtdlg.lbl.Calcmethod"));
 		label.setToolTipText(tip);
 		subsub.add(label, "gapright para");
-		
+
 		// // Extended Barrowman
 		label = new JLabel(trans.get("simedtdlg.lbl.ExtBarrowman"));
 		label.setToolTipText(tip);
@@ -175,12 +175,12 @@ class SimulationOptionsPanel extends JPanel {
 		/*label = new JLabel("6-DOF Runge-Kutta 4");
 		label.setToolTipText(tip);
 		subsub.add(label, "growx, span 3, wrap");*/
-		
+
 		// // Geodetic calculation method:
 		label = new JLabel(trans.get("simedtdlg.lbl.GeodeticMethod"));
 		label.setToolTipText(trans.get("simedtdlg.lbl.ttip.GeodeticMethodTip"));
 		subsub.add(label, "gapright para");
-		
+
 		EnumModel<GeodeticComputationStrategy> gcsModel = new EnumModel<>(
 				conditions, "GeodeticComputation");
 		final JComboBox<GeodeticComputationStrategy> gcsCombo = new JComboBox<>(gcsModel);
@@ -200,11 +200,11 @@ class SimulationOptionsPanel extends JPanel {
 		label = new JLabel(trans.get("simedtdlg.lbl.GravityModel"));
 		label.setToolTipText(trans.get("simedtdlg.lbl.ttip.GravityModel"));
 		subsub.add(label, "gapright para");
-		
+
 		EnumModel<GravityModelType> gravityModelTypeModel = new EnumModel<>(
 				conditions, "GravityModelType");
 		final JComboBox<GravityModelType> gravityModelCombo = new JComboBox<>(gravityModelTypeModel);
-		
+
 		// Update tooltip based on selected gravity model type
 		ActionListener gravityModelTTipListener = new ActionListener() {
 			@Override
@@ -226,14 +226,14 @@ class SimulationOptionsPanel extends JPanel {
 		tip = trans.get("simedtdlg.lbl.ttip.GravityValue");
 		gravityLabel.setToolTipText(tip);
 		subsub.add(gravityLabel, "gapright para, hidemode 3");
-		
+
 		m = new DoubleModel(conditions, "ConstantGravity", UnitGroup.UNITS_ACCELERATION, 0);
-		
+
 		gravitySpinner = new JSpinner(m.getSpinnerModel());
 		gravitySpinner.setEditor(new SpinnerEditor(gravitySpinner));
 		gravitySpinner.setToolTipText(tip);
 		subsub.add(gravitySpinner, "hidemode 3");
-		
+
 		gravityUnit = new UnitSelector(m);
 		gravityUnit.setToolTipText(tip);
 		subsub.add(gravityUnit, "hidemode 3");
@@ -257,22 +257,22 @@ class SimulationOptionsPanel extends JPanel {
 		};
 		gravityModelCombo.addActionListener(gravityModelListener);
 		gravityModelListener.actionPerformed(null); // Initialize visibility
-		
-		
+
+
 		// // Time step:
 		label = new JLabel(trans.get("simedtdlg.lbl.Timestep"));
 		tip = trans.get("simedtdlg.lbl.ttip.Timestep1")
 				+ trans.get("simedtdlg.lbl.ttip.Timestep2")
 				+ " "
 				+ UnitGroup.UNITS_TIME_STEP
-						.toStringUnit(RK4SimulationStepper.RECOMMENDED_TIME_STEP)
+				.toStringUnit(RK4SimulationStepper.RECOMMENDED_TIME_STEP)
 				+ ".";
 		label.setToolTipText(tip);
 		subsub.add(label, "gaptop para, gapright para");
-		
+
 		m = new DoubleModel(conditions, "TimeStep", UnitGroup.UNITS_TIME_STEP,
 				0.01, 1);
-		
+
 		spin = new JSpinner(m.getSpinnerModel());
 		spin.setEditor(new SpinnerEditor(spin));
 		spin.setToolTipText(tip);
@@ -302,13 +302,13 @@ class SimulationOptionsPanel extends JPanel {
 		unit = new UnitSelector(m);
 		unit.setToolTipText(tip);
 		subsub.add(unit, "wrap");
-		
+
 		// Reset to default button
 		JButton resetBtn = new JButton(trans.get("simedtdlg.but.resettodefault"));
 		// Reset the time step to its default value (
 		resetBtn.setToolTipText(trans.get("simedtdlg.but.ttip.resettodefault")
 				+ UnitGroup.UNITS_SHORT_TIME
-						.toStringUnit(RK4SimulationStepper.RECOMMENDED_TIME_STEP)
+				.toStringUnit(RK4SimulationStepper.RECOMMENDED_TIME_STEP)
 				+ ").");
 		resetBtn.addActionListener(new ActionListener() {
 			@Override
@@ -337,12 +337,12 @@ class SimulationOptionsPanel extends JPanel {
 				preferences.setGeodeticComputation(conditions.getGeodeticComputation());
 			}
 		});
-		
+
 		sub.add(resetBtn, "align left, split 2");
 		sub.add(saveBtn, "wrap");
-		
-		
-		
+
+
+
 		//// Simulation extensions
 		sub = new JPanel(new MigLayout("fillx, gap 0 0"));
 		sub.setBorder(BorderFactory.createTitledBorder(trans.get("simedtdlg.border.SimExt")));
@@ -357,12 +357,12 @@ class SimulationOptionsPanel extends JPanel {
 		final JButton addExtension = new JButton(trans.get("simedtdlg.SimExt.add"));
 		extensionMenu = getExtensionMenu();
 		addExtension.addActionListener(new ActionListener() {
-				public void actionPerformed(ActionEvent ev) {
-					extensionMenu.show(addExtension, 5, addExtension.getBounds().height);
-				}
-			});
+			public void actionPerformed(ActionEvent ev) {
+				extensionMenu.show(addExtension, 5, addExtension.getBounds().height);
+			}
+		});
 		sub.add(addExtension, "growx, wrap 0");
-		
+
 		currentExtensions = new JPanel(new MigLayout("fillx, gap 0 0, ins 0"));
 		JScrollPane scroll = new JScrollPane(currentExtensions);
 		scroll.setForeground(textColor);
@@ -370,12 +370,12 @@ class SimulationOptionsPanel extends JPanel {
 		scroll.setMinimumSize(new Dimension(0, 90));
 		//  &#$%! scroll pane will not honor "growy"...
 		sub.add(scroll, "growx");
-		
+
 		updateCurrentExtensions();
 
 		options.addChangeListener(e -> SwingUtilities.invokeLater(this::updateLookupSummary));
 		updateLookupSummary();
-		
+
 	}
 
 	private static void initColors() {
@@ -388,11 +388,11 @@ class SimulationOptionsPanel extends JPanel {
 		dimTextColor = UITheme.getColor(UITheme.Keys.TEXT_DIM);
 		infoTextColor = UITheme.getColor(UITheme.Keys.INFO);
 	}
-	
+
 	private JPopupMenu getExtensionMenu() {
 		Set<SimulationExtensionProvider> extensions = Application.getInjector().getInstance(new Key<>() {
 		});
-		
+
 		JPopupMenu basemenu = new JPopupMenu();
 
 		//// Use code / Launch conditions
@@ -423,7 +423,7 @@ class SimulationOptionsPanel extends JPanel {
 
 		//// Copy extension
 		updateExtensionMenuCopyExtension(basemenu);
-		
+
 		return basemenu;
 	}
 
@@ -473,11 +473,11 @@ class SimulationOptionsPanel extends JPanel {
 			extensionMenu.add(this.extensionMenuCopyExtension);
 		}
 	}
-	
+
 	private JComponent findMenu(MenuElement menu, List<String> menuItems) {
 		for (int i = 0; i < menuItems.size() - 1; i++) {
 			String menuItem = menuItems.get(i);
-			
+
 			MenuElement found = null;
 			for (MenuElement e : menu.getSubElements()) {
 				if (e instanceof JMenu && ((JMenu) e).getText().equals(menuItem)) {
@@ -485,7 +485,7 @@ class SimulationOptionsPanel extends JPanel {
 					break;
 				}
 			}
-			
+
 			if (found != null) {
 				menu = found;
 			} else {
@@ -554,10 +554,10 @@ class SimulationOptionsPanel extends JPanel {
 			}
 		});
 	}
-	
+
 	private void updateCurrentExtensions() {
 		currentExtensions.removeAll();
-		
+
 		if (simulation.getSimulationExtensions().isEmpty()) {
 			StyledLabel l = new StyledLabel(trans.get("simedtdlg.SimExt.noExtensions"), Style.ITALIC);
 			l.setForeground(dimTextColor);
@@ -574,23 +574,23 @@ class SimulationOptionsPanel extends JPanel {
 		this.revalidate();
 		this.repaint();
 	}
-	
-	
+
+
 	private class SimulationExtensionPanel extends JPanel {
-		
+
 		/**
-		 * 
+		 *
 		 */
 		private static final long serialVersionUID = -3296795614810745035L;
 
 		public SimulationExtensionPanel(final SimulationExtension extension) {
 			super(new MigLayout("fillx, gapx 0"));
-			
+
 			this.setBorder(BorderFactory.createLineBorder(dimTextColor));
 			this.add(new JLabel(extension.getName()), "spanx, growx, wrap");
-			
+
 			JButton button;
-			
+
 			this.add(new JPanel(), "spanx, split, growx, right");
 
 			// Configure
@@ -655,7 +655,7 @@ class SimulationOptionsPanel extends JPanel {
 			
 		}
 	}
-	
+
 	private SwingSimulationExtensionConfigurator findConfigurator(SimulationExtension extension) {
 		Set<SwingSimulationExtensionConfigurator> configurators = Application.getInjector().getInstance(new Key<>() {
 		});
@@ -666,5 +666,5 @@ class SimulationOptionsPanel extends JPanel {
 		}
 		return null;
 	}
-	
+
 }

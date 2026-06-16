@@ -253,6 +253,11 @@ public class SwingStartup {
 
 		// Optionally expose OpenRocket to AI agents over the MCP bridge.
 		maybeStartMcpBridge();
+
+		// Announce the AI fork on first launch (skip in unattended/agent mode).
+		if (!Boolean.getBoolean("openrocket.mcp.autostart")) {
+			info.openrocket.swing.mcp.AiForkWelcomeDialog.maybeShow(BasicFrame.lastFrameInstance);
+		}
 		
 		// Check whether update info has been fetched or whether it needs more time
 		log.info("Checking update status");

@@ -69,7 +69,9 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `set_appearance` | Set a component's colour / shine |
 | `set_fin_points` | Set a freeform fin profile from [x,y] points |
 | `add_custom_expression` | Add a custom flight-data expression |
-| `component_mass_analysis` | Per-component mass + CG breakdown |
+| `component_mass_analysis` / `component_aero_analysis` | Per-component mass+CG / CP+drag breakdown |
+| `set_deployment` | Recovery device deploy event/altitude/delay |
+| `move_component` / `duplicate_component` | Reparent or duplicate a component |
 | `set_simulation_options` | Set launch conditions (rod, wind, altitude, temperature, …) |
 | `optimize_parameter` | Auto-tune a component parameter for max/target apogee or target stability |
 | `search_motors` | Search the thrust-curve motor database |

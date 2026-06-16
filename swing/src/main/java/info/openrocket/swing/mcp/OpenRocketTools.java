@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 import info.openrocket.core.aerodynamics.AerodynamicCalculator;
+import info.openrocket.core.aerodynamics.AerodynamicForces;
 import info.openrocket.core.aerodynamics.BarrowmanCalculator;
 import info.openrocket.core.aerodynamics.FlightConditions;
 import info.openrocket.core.appearance.Appearance;
@@ -37,8 +38,10 @@ import info.openrocket.core.rocketcomponent.AxialStage;
 import info.openrocket.core.rocketcomponent.ClusterConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfigurationId;
+import info.openrocket.core.rocketcomponent.DeploymentConfiguration;
 import info.openrocket.core.rocketcomponent.FreeformFinSet;
 import info.openrocket.core.rocketcomponent.InnerTube;
+import info.openrocket.core.rocketcomponent.RecoveryDevice;
 import info.openrocket.core.rocketcomponent.StageSeparationConfiguration;
 import info.openrocket.core.rocketcomponent.MotorMount;
 import info.openrocket.core.rocketcomponent.Rocket;
@@ -115,6 +118,10 @@ public class OpenRocketTools {
 			case "set_fin_points":      return setFinPoints(args);
 			case "add_custom_expression": return addCustomExpression(args);
 			case "component_mass_analysis": return componentMassAnalysis(args);
+			case "component_aero_analysis": return componentAeroAnalysis(args);
+			case "set_deployment":      return setDeployment(args);
+			case "move_component":      return moveComponent(args);
+			case "duplicate_component": return duplicateComponent(args);
 			case "list_flight_configs": return listFlightConfigs(args);
 			case "add_flight_config":   return addFlightConfig(args);
 			case "select_flight_config":return selectFlightConfig(args);
@@ -859,6 +866,122 @@ public class OpenRocketTools {
 			r.addProperty("note", "Per-component mass (kg) and CG (m from nose) for the selected configuration.");
 			return r;
 		});
+	}
+
+	private JsonObject componentAeroAnalysis(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		return onEdtCompute(() -> {
+			FlightConfiguration config = doc.getRocket().getSelectedConfiguration();
+			FlightConditions cond = new FlightConditions(config);
+			cond.setMach(Application.getPreferences().getDefaultMach());
+			cond.setAOA(0);
+			cond.setRollRate(0);
+			AerodynamicCalculator aero = new BarrowmanCalculator();
+			java.util.Map<RocketComponent, AerodynamicForces> forces =
+					aero.getForceAnalysis(config, cond, new WarningSet());
+			JsonArray arr = new JsonArray();
+			for (java.util.Map.Entry<RocketComponent, AerodynamicForces> e : forces.entrySet()) {
+				AerodynamicForces af = e.getValue();
+				JsonObject o = new JsonObject();
+				o.addProperty("name", e.getKey().getName());
+				o.addProperty("cp", af.getCP() == null ? Double.NaN : af.getCP().getX());
+				o.addProperty("cd", af.getCD());
+				arr.add(o);
+			}
+			JsonObject r = new JsonObject();
+			r.add("components", arr);
+			r.addProperty("note", "Per-component CP (m from nose) and drag coefficient at default Mach.");
+			return r;
+		});
+	}
+
+	private JsonObject setDeployment(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		if (!(c instanceof RecoveryDevice)) {
+			throw new ToolException(c.getName() + " is not a recovery device (parachute/streamer).");
+		}
+		RecoveryDevice rec = (RecoveryDevice) c;
+		String eventName = requireString(args, "event");
+		DeploymentConfiguration.DeployEvent event;
+		try {
+			event = DeploymentConfiguration.DeployEvent.valueOf(eventName.toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new ToolException("Unknown deploy event '" + eventName
+					+ "'. Options: LAUNCH, EJECTION, APOGEE, ALTITUDE, LOWER_STAGE_SEPARATION, NEVER.");
+		}
+		final Double altitude = (args.has("altitude") && !args.get("altitude").isJsonNull())
+				? args.get("altitude").getAsDouble() : null;
+		final Double delay = (args.has("delay") && !args.get("delay").isJsonNull())
+				? args.get("delay").getAsDouble() : null;
+		onEdt(() -> {
+			DeploymentConfiguration dc = rec.getDeploymentConfigurations().getDefault();
+			doc.addUndoPosition("Set deployment");
+			dc.setDeployEvent(event);
+			if (altitude != null) {
+				dc.setDeployAltitude(altitude);
+			}
+			if (delay != null) {
+				dc.setDeployDelay(delay);
+			}
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("event", event.name());
+		return result;
+	}
+
+	private JsonObject moveComponent(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		RocketComponent newParent = findComponent(doc, requireString(args, "newParentId"));
+		if (c.getParent() == null) {
+			throw new ToolException("Cannot move the rocket root.");
+		}
+		final Integer index = (args.has("index") && !args.get("index").isJsonNull())
+				? args.get("index").getAsInt() : null;
+		AtomicReference<Exception> err = new AtomicReference<>();
+		onEdt(() -> {
+			try {
+				doc.addUndoPosition("Move component");
+				c.getParent().removeChild(c);
+				newParent.addChild(c, index != null ? index : newParent.getChildCount());
+			} catch (Exception e) {
+				err.set(e);
+			}
+			return null;
+		});
+		if (err.get() != null) {
+			throw new ToolException("Could not move " + c.getName() + " under "
+					+ newParent.getName() + ": " + err.get().getMessage());
+		}
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("id", c.getID().toString());
+		result.addProperty("newParentId", newParent.getID().toString());
+		return result;
+	}
+
+	private JsonObject duplicateComponent(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		RocketComponent parent = c.getParent();
+		if (parent == null) {
+			throw new ToolException("Cannot duplicate the rocket root.");
+		}
+		AtomicReference<UUID> idRef = new AtomicReference<>();
+		onEdt(() -> {
+			RocketComponent copy = c.copy();
+			doc.addUndoPosition("Duplicate component");
+			parent.addChild(copy, parent.getChildren().indexOf(c) + 1);
+			idRef.set(copy.getID());
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("newId", idRef.get().toString());
+		return result;
 	}
 
 	// ------------------------------------------------------------------
@@ -1745,6 +1868,20 @@ public class OpenRocketTools {
 		tools.add(tool("component_mass_analysis",
 				"Per-component mass (kg) and CG (m) breakdown for the selected configuration.",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("component_aero_analysis",
+				"Per-component center-of-pressure (m) and drag-coefficient breakdown at default Mach.",
+				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("set_deployment",
+				"Set a recovery device's deployment. event: LAUNCH, EJECTION, APOGEE, ALTITUDE, "
+				+ "LOWER_STAGE_SEPARATION, NEVER. For ALTITUDE give altitude (m); optional delay (s).",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"event\":{\"type\":\"string\"},\"altitude\":{\"type\":\"number\"},\"delay\":{\"type\":\"number\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"event\"]}"));
+		tools.add(tool("move_component",
+				"Move a component under a new parent (optionally at an index). Reports an error if the "
+				+ "parent does not accept it.",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"newParentId\":{\"type\":\"string\"},\"index\":{\"type\":\"integer\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"newParentId\"]}"));
+		tools.add(tool("duplicate_component",
+				"Duplicate a component (and its children) next to itself under the same parent.",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
 		tools.add(tool("set_simulation_options",
 				"Set launch conditions / options on a simulation. 'properties' maps option names to "
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"

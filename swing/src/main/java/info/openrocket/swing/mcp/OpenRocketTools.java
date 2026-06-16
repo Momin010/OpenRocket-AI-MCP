@@ -26,8 +26,10 @@ import info.openrocket.core.material.Material;
 import info.openrocket.core.motor.MotorConfiguration;
 import info.openrocket.core.motor.ThrustCurveMotor;
 import info.openrocket.core.preset.ComponentPreset;
+import info.openrocket.core.rocketcomponent.ClusterConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfigurationId;
+import info.openrocket.core.rocketcomponent.InnerTube;
 import info.openrocket.core.rocketcomponent.MotorMount;
 import info.openrocket.core.rocketcomponent.Rocket;
 import info.openrocket.core.rocketcomponent.RocketComponent;
@@ -87,6 +89,7 @@ public class OpenRocketTools {
 			case "set_material":        return setMaterial(args);
 			case "search_presets":      return searchPresets(args);
 			case "apply_preset":        return applyPreset(args);
+			case "set_cluster":         return setCluster(args);
 			case "list_flight_configs": return listFlightConfigs(args);
 			case "add_flight_config":   return addFlightConfig(args);
 			case "select_flight_config":return selectFlightConfig(args);
@@ -624,6 +627,51 @@ public class OpenRocketTools {
 		result.addProperty("id", c.getID().toString());
 		result.addProperty("partNo", preset.getPartNo());
 		result.addProperty("manufacturer", preset.getManufacturer().getDisplayName());
+		return result;
+	}
+
+	// ------------------------------------------------------------------
+	// Motor clusters
+	// ------------------------------------------------------------------
+
+	private JsonObject setCluster(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		if (!(c instanceof InnerTube)) {
+			throw new ToolException(c.getName() + " is not an InnerTube. Clusters apply to inner "
+					+ "tubes (add an InnerTube as the motor mount, then cluster it).");
+		}
+		InnerTube tube = (InnerTube) c;
+		String name = requireString(args, "config");
+		ClusterConfiguration chosen = null;
+		for (ClusterConfiguration cc : ClusterConfiguration.CONFIGURATIONS) {
+			if (cc.getXMLName().equalsIgnoreCase(name)) {
+				chosen = cc;
+				break;
+			}
+		}
+		if (chosen == null) {
+			StringBuilder sb = new StringBuilder();
+			for (ClusterConfiguration cc : ClusterConfiguration.CONFIGURATIONS) {
+				sb.append(cc.getXMLName()).append(" ");
+			}
+			throw new ToolException("Unknown cluster config '" + name + "'. Options: " + sb.toString().trim());
+		}
+		final ClusterConfiguration cfg = chosen;
+		final Double scale = (args.has("clusterScale") && !args.get("clusterScale").isJsonNull())
+				? args.get("clusterScale").getAsDouble() : null;
+		onEdt(() -> {
+			doc.addUndoPosition("Set cluster");
+			tube.setClusterConfiguration(cfg);
+			if (scale != null) {
+				tube.setClusterScale(scale);
+			}
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("config", cfg.getXMLName());
+		result.addProperty("motorCount", cfg.getClusterCount());
 		return result;
 	}
 
@@ -1328,6 +1376,11 @@ public class OpenRocketTools {
 				"Apply a catalog preset (by partNo, optionally manufacturer) to a component, loading its "
 				+ "real dimensions/material. The component must match the preset type.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"partNo\":{\"type\":\"string\"},\"manufacturer\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"partNo\"]}"));
+		tools.add(tool("set_cluster",
+				"Make an InnerTube a motor cluster. config is a pattern name: single, double, 3-row, "
+				+ "4-row, 3-ring, 4-ring, 5-ring, 6-ring, 3-star, 4-star, 5-star, 6-star, 9-grid, 9-star. "
+				+ "Optional clusterScale spreads the tubes apart.",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"config\":{\"type\":\"string\"},\"clusterScale\":{\"type\":\"number\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"config\"]}"));
 		tools.add(tool("list_flight_configs",
 				"List the flight configurations of the active design (id, name, which is selected).",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));

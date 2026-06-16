@@ -59,6 +59,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `delete_component` | Delete a component (and its children) |
 | `list_materials` / `set_material` | List materials and set a component's material by name |
 | `search_presets` / `apply_preset` | Find real commercial catalog parts and load them into a component |
+| `set_cluster` | Turn an InnerTube into a motor cluster (3-ring, 4-ring, …) |
 | `list_flight_configs` / `add_flight_config` / `select_flight_config` | Manage flight configurations |
 | `list_simulations` / `add_simulation` / `delete_simulation` | Manage simulations |
 | `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/descent/warnings (SI units) |
@@ -79,6 +80,10 @@ mkdir -p .claude/commands && cp docs/goal-command.md .claude/commands/goal.md
 
 Then, with the bridge connected, run e.g.
 `/goal a stable C-motor rocket that reaches ~150 m and lands at ~4 m/s`.
+
+**Multi-stage, parallel stages and pods** need no special tool: `add_component` adds an
+`AxialStage` under the rocket (a booster), or a `ParallelStage` / `PodSet` under a body component.
+A 2-stage rocket simulates with staged ignition out of the box.
 
 `get_component` / `set_component` are **generic** — they introspect each component's
 bean properties, so any parameter a human can edit in the GUI is reachable by name

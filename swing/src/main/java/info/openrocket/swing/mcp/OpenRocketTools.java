@@ -17,6 +17,7 @@ import info.openrocket.core.database.motor.ThrustCurveMotorSetDatabase;
 import info.openrocket.core.document.OpenRocketDocument;
 import info.openrocket.core.document.OpenRocketDocumentFactory;
 import info.openrocket.core.document.Simulation;
+import info.openrocket.core.document.StorageOptions;
 import info.openrocket.core.file.GeneralRocketLoader;
 import info.openrocket.core.file.GeneralRocketSaver;
 import info.openrocket.core.logging.Warning;
@@ -35,6 +36,8 @@ import info.openrocket.core.rocketcomponent.Rocket;
 import info.openrocket.core.rocketcomponent.RocketComponent;
 import info.openrocket.core.rocketcomponent.SymmetricComponent;
 import info.openrocket.core.simulation.FlightData;
+import info.openrocket.core.simulation.FlightDataBranch;
+import info.openrocket.core.simulation.FlightDataType;
 import info.openrocket.core.simulation.SimulationOptions;
 import info.openrocket.core.startup.Application;
 import info.openrocket.core.util.CoordinateIF;
@@ -43,10 +46,13 @@ import info.openrocket.swing.gui.main.BasicFrame;
 
 import javax.swing.SwingUtilities;
 import java.io.File;
+import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
@@ -97,6 +103,8 @@ public class OpenRocketTools {
 			case "add_simulation":      return addSimulation(args);
 			case "run_simulation":      return runSimulation(args);
 			case "get_simulation_results": return getSimulationResults(args);
+			case "get_flight_data":     return getFlightData(args);
+			case "export_design":       return exportDesign(args);
 			case "set_simulation_options": return setSimulationOptions(args);
 			case "optimize_parameter":  return optimizeParameter(args);
 			case "delete_simulation":   return deleteSimulation(args);
@@ -828,6 +836,99 @@ public class OpenRocketTools {
 		return result;
 	}
 
+	private static final Map<String, FlightDataType> FLIGHT_TYPES = new LinkedHashMap<>();
+	static {
+		FLIGHT_TYPES.put("time", FlightDataType.TYPE_TIME);
+		FLIGHT_TYPES.put("altitude", FlightDataType.TYPE_ALTITUDE);
+		FLIGHT_TYPES.put("velocity", FlightDataType.TYPE_VELOCITY_TOTAL);
+		FLIGHT_TYPES.put("acceleration", FlightDataType.TYPE_ACCELERATION_TOTAL);
+		FLIGHT_TYPES.put("mach", FlightDataType.TYPE_MACH_NUMBER);
+		FLIGHT_TYPES.put("stability", FlightDataType.TYPE_STABILITY);
+	}
+
+	/** Return downsampled flight-time series (and optionally write a full-resolution CSV). */
+	private JsonObject getFlightData(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		Simulation sim = resolveSimulation(doc, args);
+		FlightData data = sim.getSimulatedData();
+		if (data == null || data.getBranchCount() == 0) {
+			throw new ToolException("No flight data. Run the simulation first.");
+		}
+		FlightDataBranch branch = data.getBranch(0);
+		int len = branch.getLength();
+		int maxPoints = args.has("maxPoints") ? Math.max(2, Math.min(2000, args.get("maxPoints").getAsInt())) : 60;
+		int step = Math.max(1, len / maxPoints);
+
+		JsonObject series = new JsonObject();
+		for (Map.Entry<String, FlightDataType> e : FLIGHT_TYPES.entrySet()) {
+			List<Double> vals = branch.get(e.getValue());
+			if (vals == null || vals.isEmpty()) {
+				continue;
+			}
+			JsonArray a = new JsonArray();
+			for (int i = 0; i < len; i += step) {
+				a.add(vals.get(i));
+			}
+			series.add(e.getKey(), a);
+		}
+
+		JsonObject result = new JsonObject();
+		result.addProperty("simulation", sim.getName());
+		result.addProperty("totalSamples", len);
+		result.addProperty("returnedPoints", (len + step - 1) / step);
+		result.add("series", series);
+
+		String csvPath = optString(args, "csvPath", null);
+		if (csvPath != null) {
+			try (PrintWriter pw = new PrintWriter(csvPath)) {
+				List<String> names = new java.util.ArrayList<>(FLIGHT_TYPES.keySet());
+				pw.println(String.join(",", names));
+				for (int i = 0; i < len; i++) {
+					StringBuilder row = new StringBuilder();
+					for (int j = 0; j < names.size(); j++) {
+						List<Double> vals = branch.get(FLIGHT_TYPES.get(names.get(j)));
+						if (j > 0) {
+							row.append(",");
+						}
+						row.append(vals == null || vals.isEmpty() ? "" : vals.get(i));
+					}
+					pw.println(row);
+				}
+			}
+			result.addProperty("csvFile", new File(csvPath).getAbsolutePath());
+		}
+		return result;
+	}
+
+	/** Export the active design to a RockSim (.rkt) or OpenRocket (.ork) file. */
+	private JsonObject exportDesign(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		String path = requireString(args, "path");
+		String fmt = optString(args, "format", "rocksim").toLowerCase();
+
+		StorageOptions opts = new StorageOptions();
+		String ext;
+		if (fmt.startsWith("rock") || fmt.equals("rkt")) {
+			opts.setFileType(StorageOptions.FileType.ROCKSIM);
+			ext = ".rkt";
+		} else if (fmt.startsWith("open") || fmt.equals("ork")) {
+			opts.setFileType(StorageOptions.FileType.OPENROCKET);
+			ext = ".ork";
+		} else {
+			throw new ToolException("Unsupported format '" + fmt + "'. Use 'rocksim' or 'openrocket'.");
+		}
+		File f = new File(path);
+		if (!f.getName().toLowerCase().endsWith(ext)) {
+			f = new File(f.getAbsolutePath() + ext);
+		}
+		new GeneralRocketSaver().save(f, doc, opts);
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("format", opts.getFileType().name());
+		result.addProperty("file", f.getAbsolutePath());
+		return result;
+	}
+
 	private JsonObject setSimulationOptions(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
 		Simulation sim = resolveSimulation(doc, args);
@@ -1402,6 +1503,13 @@ public class OpenRocketTools {
 		tools.add(tool("get_simulation_results",
 				"Get the last computed flight summary for a simulation (by index or name).",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("get_flight_data",
+				"Get the downsampled flight time-series (time, altitude, velocity, acceleration, mach, "
+				+ "stability) for a simulation. Optionally write a full-resolution CSV via csvPath.",
+				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"maxPoints\":{\"type\":\"integer\"},\"csvPath\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("export_design",
+				"Export the active design to another format. format is 'rocksim' (.rkt) or 'openrocket' (.ork).",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"format\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("set_simulation_options",
 				"Set launch conditions / options on a simulation. 'properties' maps option names to "
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"

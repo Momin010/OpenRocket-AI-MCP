@@ -29,6 +29,7 @@ import info.openrocket.core.rocketcomponent.Rocket;
 import info.openrocket.core.rocketcomponent.RocketComponent;
 import info.openrocket.core.rocketcomponent.SymmetricComponent;
 import info.openrocket.core.simulation.FlightData;
+import info.openrocket.core.simulation.SimulationOptions;
 import info.openrocket.core.startup.Application;
 import info.openrocket.core.util.CoordinateIF;
 import info.openrocket.core.util.MathUtil;
@@ -78,10 +79,14 @@ public class OpenRocketTools {
 			case "add_component":       return addComponent(args);
 			case "set_component":       return setComponent(args);
 			case "delete_component":    return deleteComponent(args);
+			case "list_flight_configs": return listFlightConfigs(args);
+			case "add_flight_config":   return addFlightConfig(args);
+			case "select_flight_config":return selectFlightConfig(args);
 			case "list_simulations":    return listSimulations(args);
 			case "add_simulation":      return addSimulation(args);
 			case "run_simulation":      return runSimulation(args);
 			case "get_simulation_results": return getSimulationResults(args);
+			case "set_simulation_options": return setSimulationOptions(args);
 			case "delete_simulation":   return deleteSimulation(args);
 			case "search_motors":       return searchMotors(args);
 			case "set_motor":           return setMotor(args);
@@ -402,7 +407,7 @@ public class OpenRocketTools {
 	}
 
 	/** Find setX(value) for a property and invoke it with a coerced value. Returns the coerced value. */
-	private Object applyProperty(RocketComponent c, String key, JsonElement value) throws Exception {
+	private Object applyProperty(Object c, String key, JsonElement value) throws Exception {
 		String setter = "set" + capitalize(key);
 		Method match = null;
 		for (Method m : c.getClass().getMethods()) {
@@ -440,6 +445,68 @@ public class OpenRocketTools {
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
 		result.addProperty("deletedId", c.getID().toString());
+		return result;
+	}
+
+	// ------------------------------------------------------------------
+	// Flight configurations
+	// ------------------------------------------------------------------
+
+	private JsonObject listFlightConfigs(JsonObject args) throws Exception {
+		Rocket rocket = activeFrame(args).getDocument().getRocket();
+		FlightConfigurationId selected = rocket.getSelectedConfiguration().getId();
+		JsonArray arr = new JsonArray();
+		for (FlightConfigurationId fcid : rocket.getIds()) {
+			JsonObject o = new JsonObject();
+			o.addProperty("id", fcid.toString());
+			o.addProperty("name", rocket.getFlightConfiguration(fcid).getName());
+			o.addProperty("selected", fcid.equals(selected));
+			arr.add(o);
+		}
+		JsonObject result = new JsonObject();
+		result.add("configurations", arr);
+		return result;
+	}
+
+	private JsonObject addFlightConfig(JsonObject args) throws Exception {
+		Rocket rocket = activeFrame(args).getDocument().getRocket();
+		String name = optString(args, "name", null);
+		boolean select = !args.has("select") || args.get("select").getAsBoolean();
+		AtomicReference<String> idRef = new AtomicReference<>();
+		onEdt(() -> {
+			FlightConfiguration cfg = new FlightConfiguration(rocket, null);
+			rocket.setFlightConfiguration(cfg.getId(), cfg);
+			cfg.setAllStages();
+			if (name != null) {
+				cfg.setName(name);
+			}
+			if (select) {
+				rocket.setSelectedConfiguration(cfg.getId());
+			}
+			idRef.set(cfg.getId().toString());
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("id", idRef.get());
+		return result;
+	}
+
+	private JsonObject selectFlightConfig(JsonObject args) throws Exception {
+		Rocket rocket = activeFrame(args).getDocument().getRocket();
+		String id = requireString(args, "id");
+		FlightConfigurationId fcid = new FlightConfigurationId(id);
+		if (!rocket.getIds().contains(fcid)) {
+			throw new ToolException("No flight configuration with id " + id
+					+ ". Use list_flight_configs.");
+		}
+		onEdt(() -> {
+			rocket.setSelectedConfiguration(fcid);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("selected", id);
 		return result;
 	}
 
@@ -526,6 +593,41 @@ public class OpenRocketTools {
 		result.addProperty("timeToApogee", data.getTimeToApogee());
 		result.addProperty("flightTime", data.getFlightTime());
 		result.addProperty("groundHitVelocity", data.getGroundHitVelocity());
+		JsonArray warns = new JsonArray();
+		for (Warning w : sim.getSimulatedWarnings()) {
+			warns.add(w.toString());
+		}
+		result.add("warnings", warns);
+		return result;
+	}
+
+	private JsonObject setSimulationOptions(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		Simulation sim = resolveSimulation(doc, args);
+		if (!args.has("properties") || !args.get("properties").isJsonObject()) {
+			throw new ToolException("Expected an object 'properties' of name -> value pairs "
+					+ "(e.g. {\"launchRodLength\":2.0,\"windSpeedAverage\":3.0}).");
+		}
+		JsonObject properties = args.getAsJsonObject("properties");
+		JsonObject applied = new JsonObject();
+		JsonObject failed = new JsonObject();
+		onEdt(() -> {
+			SimulationOptions opts = sim.getOptions();
+			for (String key : properties.keySet()) {
+				try {
+					applied.add(key, toJson(applyProperty(opts, key, properties.get(key))));
+				} catch (Exception e) {
+					failed.addProperty(key, e.getMessage());
+				}
+			}
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("simulation", sim.getName());
+		result.add("applied", applied);
+		if (failed.size() > 0) {
+			result.add("failed", failed);
+		}
 		return result;
 	}
 
@@ -903,6 +1005,15 @@ public class OpenRocketTools {
 		tools.add(tool("delete_component",
 				"Delete a component (and its children) by id.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
+		tools.add(tool("list_flight_configs",
+				"List the flight configurations of the active design (id, name, which is selected).",
+				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("add_flight_config",
+				"Create a new flight configuration (all stages active) and select it by default.",
+				"{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"select\":{\"type\":\"boolean\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("select_flight_config",
+				"Select a flight configuration by id (see list_flight_configs).",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
 		tools.add(tool("list_simulations",
 				"List the simulations in the active design.",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
@@ -915,6 +1026,11 @@ public class OpenRocketTools {
 		tools.add(tool("get_simulation_results",
 				"Get the last computed flight summary for a simulation (by index or name).",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("set_simulation_options",
+				"Set launch conditions / options on a simulation. 'properties' maps option names to "
+				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"
+				+ "\"launchAltitude\":0.0,\"launchTemperature\":288.15}.",
+				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"properties\":{\"type\":\"object\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"properties\"]}"));
 		tools.add(tool("delete_simulation",
 				"Delete a simulation by index.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"index\"]}"));

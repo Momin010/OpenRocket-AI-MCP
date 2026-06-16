@@ -92,6 +92,7 @@ public class OpenRocketTools {
 			case "run_simulation":      return runSimulation(args);
 			case "get_simulation_results": return getSimulationResults(args);
 			case "set_simulation_options": return setSimulationOptions(args);
+			case "optimize_parameter":  return optimizeParameter(args);
 			case "delete_simulation":   return deleteSimulation(args);
 			case "search_motors":       return searchMotors(args);
 			case "set_motor":           return setMotor(args);
@@ -716,6 +717,128 @@ public class OpenRocketTools {
 		return result;
 	}
 
+	/**
+	 * Auto-tune a single scalar component parameter over a range to meet a goal:
+	 * "max_apogee", "target_apogee" (needs target), or "target_stability" (needs target calibers).
+	 * Performs a coarse sweep then a local refine, setting the component to the best value found.
+	 */
+	private JsonObject optimizeParameter(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		String param = requireString(args, "parameter");
+		double min = requireDouble(args, "min");
+		double max = requireDouble(args, "max");
+		if (max <= min) {
+			throw new ToolException("max must be greater than min.");
+		}
+		String objective = requireString(args, "objective");
+		boolean needsTarget = objective.equals("target_apogee") || objective.equals("target_stability");
+		Double target = (args.has("target") && !args.get("target").isJsonNull())
+				? args.get("target").getAsDouble() : null;
+		if (needsTarget && target == null) {
+			throw new ToolException("Objective '" + objective + "' requires a 'target' value.");
+		}
+		boolean apogeeObjective = objective.startsWith("max_") || objective.startsWith("target_apogee");
+		Simulation sim = apogeeObjective ? resolveSimulation(doc, args) : null;
+		int samples = args.has("samples") ? Math.max(4, Math.min(30, args.get("samples").getAsInt())) : 12;
+
+		// Validate the parameter is settable before looping.
+		setScalarOnEdt(c, param, min);
+
+		JsonArray evals = new JsonArray();
+		double bestVal = min;
+		double bestScore = -Double.MAX_VALUE;
+		double bestMetric = Double.NaN;
+		double lo = min;
+		double hi = max;
+		int n = samples;
+		for (int pass = 0; pass < 2; pass++) {
+			for (int i = 0; i < n; i++) {
+				double v = lo + (hi - lo) * i / (n - 1);
+				setScalarOnEdt(c, param, v);
+				double metric = apogeeObjective ? evalApogee(sim) : computeMargin(doc);
+				double score = scoreOf(objective, metric, target);
+				JsonObject e = new JsonObject();
+				e.addProperty("value", v);
+				e.addProperty(apogeeObjective ? "apogee" : "stabilityMargin", metric);
+				evals.add(e);
+				if (score > bestScore) {
+					bestScore = score;
+					bestVal = v;
+					bestMetric = metric;
+				}
+			}
+			double span = (hi - lo) / (n - 1);
+			lo = Math.max(min, bestVal - span);
+			hi = Math.min(max, bestVal + span);
+			n = 7;
+		}
+		setScalarOnEdt(c, param, bestVal);
+
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("parameter", param);
+		result.addProperty("objective", objective);
+		result.addProperty("bestValue", bestVal);
+		result.addProperty(apogeeObjective ? "apogee" : "stabilityMargin", bestMetric);
+		result.addProperty("evaluations", evals.size());
+		result.add("samples", evals);
+		result.addProperty("note", "Component set to bestValue. Re-check stability/apogee as needed.");
+		return result;
+	}
+
+	private double scoreOf(String objective, double metric, Double target) {
+		if (Double.isNaN(metric)) {
+			return -Double.MAX_VALUE;
+		}
+		switch (objective) {
+			case "max_apogee":        return metric;
+			case "target_apogee":     return -Math.abs(metric - target);
+			case "target_stability":  return -Math.abs(metric - target);
+			default:                  return metric;
+		}
+	}
+
+	private double evalApogee(Simulation sim) {
+		try {
+			sim.simulate();
+			FlightData d = sim.getSimulatedData();
+			return d == null ? Double.NaN : d.getMaxAltitude();
+		} catch (Exception e) {
+			return Double.NaN;
+		}
+	}
+
+	private double computeMargin(OpenRocketDocument doc) throws Exception {
+		return onEdtCompute(() -> {
+			FlightConfiguration config = doc.getRocket().getSelectedConfiguration();
+			FlightConditions cond = new FlightConditions(config);
+			cond.setMach(Application.getPreferences().getDefaultMach());
+			cond.setAOA(0);
+			cond.setRollRate(0);
+			CoordinateIF cp = new BarrowmanCalculator().getWorstCP(config, cond, new WarningSet());
+			CoordinateIF cg = MassCalculator.calculateLaunch(config).getCM();
+			double diameter = Double.NaN;
+			for (RocketComponent c2 : config.getCoreComponents()) {
+				if (c2 instanceof SymmetricComponent) {
+					diameter = MathUtil.max(diameter, ((SymmetricComponent) c2).getForeRadius() * 2,
+							((SymmetricComponent) c2).getAftRadius() * 2);
+				}
+			}
+			if (Double.isNaN(diameter) || diameter <= 0) {
+				return Double.NaN;
+			}
+			return (cp.getX() - cg.getX()) / diameter;
+		});
+	}
+
+	private void setScalarOnEdt(RocketComponent c, String param, double value) throws Exception {
+		onEdt(() -> {
+			applyProperty(c, param, new JsonPrimitive(value));
+			return null;
+		});
+	}
+
 	private JsonObject deleteSimulation(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
 		int index = requireInt(args, "index");
@@ -1049,6 +1172,13 @@ public class OpenRocketTools {
 		return args.get(key).getAsInt();
 	}
 
+	private static double requireDouble(JsonObject args, String key) throws ToolException {
+		if (!args.has(key) || args.get(key).isJsonNull()) {
+			throw new ToolException("Missing required argument: " + key);
+		}
+		return args.get(key).getAsDouble();
+	}
+
 	// ------------------------------------------------------------------
 	// Tool schema definitions (advertised via tools/list)
 	// ------------------------------------------------------------------
@@ -1123,6 +1253,12 @@ public class OpenRocketTools {
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"
 				+ "\"launchAltitude\":0.0,\"launchTemperature\":288.15}.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"properties\":{\"type\":\"object\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"properties\"]}"));
+		tools.add(tool("optimize_parameter",
+				"Auto-tune one scalar component parameter over [min,max] to meet a goal. objective is "
+				+ "'max_apogee', 'target_apogee' (give target metres) or 'target_stability' (give target "
+				+ "calibers). Sweeps + refines and sets the component to the best value. For apogee goals "
+				+ "give the simulation (index/name).",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"parameter\":{\"type\":\"string\"},\"min\":{\"type\":\"number\"},\"max\":{\"type\":\"number\"},\"objective\":{\"type\":\"string\"},\"target\":{\"type\":\"number\"},\"samples\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"parameter\",\"min\",\"max\",\"objective\"]}"));
 		tools.add(tool("delete_simulation",
 				"Delete a simulation by index.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"index\"]}"));

@@ -1,152 +1,96 @@
-![OpenRocket banner](.github/banner.png)
+# 🚀 OpenRocket-AI
 
-![Build Status](https://github.com/openrocket/openrocket/actions/workflows/build.yml/badge.svg)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-![GitHub release](https://img.shields.io/github/release/openrocket/openrocket.svg)
-[![Github Releases (by release)](https://img.shields.io/github/downloads/openrocket/openrocket/latest/total.svg)](https://GitHub.com/openrocket/openrocket/releases/)
-[![Read the Docs](https://readthedocs.org/projects/openrocket/badge/?version=latest)](https://openrocket.readthedocs.io/en/latest/)
-[![snap release](https://snapcraft.io/openrocket/badge.svg)](https://snapcraft.io/openrocket)
-![Chocolatey release](https://img.shields.io/chocolatey/v/openrocket)
-[![Maven Central](https://maven-badges.sml.io/sonatype-central/info.openrocket/core/badge.svg)](https://maven-badges.sml.io/sonatype-central/info.openrocket/core/)
-[![Crowdin](https://badges.crowdin.net/openrocket/localized.svg)](https://crowdin.com/project/openrocket)
-[![Join our Discord server!](https://img.shields.io/discord/1073297014814691328?logo=discord)](https://discord.gg/qD2G5v2FAw)
+![Java 17](https://img.shields.io/badge/Java-17-orange.svg)
 
-OpenRocket is a free, fully featured model rocket simulator that allows you to design and simulate your rockets before actually building and flying them.
+**An AI-integrated fork of [OpenRocket](https://openrocket.info/)** — the free, fully-featured
+model-rocket simulator — with a built-in **MCP (Model Context Protocol) bridge** so AI agents like
+**Claude Code** can design, simulate, analyse, optimise, screenshot and *fly* your rockets, live,
+right inside the app.
 
---------
+It's the same OpenRocket you know (same GPLv3 license, same engine), plus a port the AI connects to.
 
-## 🛠️ Design, Visualize, and Analyze
-
-1. **Design** your rockets using a rich selection of built-in components:
-   ![Three-stage rocket - 2D](.github/OpenRocket_home_2D.png)
-
-2. **Visualize** your masterpiece in 3D:
-   ![Three-stage rocket - 3D](.github/OpenRocket_home_3D.png)
-
-3. **Plot & Analyze** your simulation results for precision and improvements:
-   ![Three-stage rocket - Simulation plot](.github/OpenRocket_sim.png)
-
-## 🌟 Features
-
-- **Six-degree-of-freedom flight simulation**
-- **Automatic design optimization**
-- **Realtime simulated altitude, velocity, and acceleration display**
-- **Staging and clustering support**
-- **Export to other simulation programs (RockSim, RASAero II)**
-- **Export component(s) to OBJ file for 3D printing or SVG for laser cutting**
-- **Cross-platform (Java-based)**
-
-... plus many more
-
-📖 Read more on [our website](https://openrocket.info/).
-
-## 💾 Installers
-
-You can find the OpenRocket installers [here](https://openrocket.info/downloads.html).
-
-Release notes are available on each [release's page](https://github.com/openrocket/openrocket/releases) or on [our website](https://openrocket.info/release_notes.html).
-
-## 📖 Documentation
-
-You can find our documentation on [ReadTheDocs](https://openrocket.readthedocs.io/en/latest/).
-
-## 🚀 Getting started
-
-**Check out [our documentation](https://openrocket.readthedocs.io/en/latest/setup/getting_started.html) for a detailled guide on how to get started.**
-
-The easiest way to get familiar with OpenRocket is to open one of our in-program example designs:
-
-![Get started with the example designs](.github/getting-started.png)
-
-Dive into the essentials: adjust component dimensions, plot a simulation, swap out motors, and more. Explore the impact of your changes and, most importantly, enjoy the process! 😊
+> Not affiliated with or endorsed by the OpenRocket project. This is a community fork.
 
 ---
 
-## 📐 OpenRocket-related Projects & Tools
-*Note: If you have an OpenRocket-related project you would like included in the list, you can file a new issue for it.*
+## ✨ What's new in this fork
 
-### Core Projects
-| Project                                                                               | Type             | Description                                                    |
-|---------------------------------------------------------------------------------------|------------------|----------------------------------------------------------------|
-| [openrocket/openrocket](https://github.com/openrocket/openrocket)                     | Core project     | Main simulator (Java)                                          |
-| [openrocket/openrocket.github.io](https://github.com/openrocket/openrocket.github.io) | Website source   | Website content (Jekyll)                                       |
-| [openrocket/openrocket-database](https://github.com/openrocket/openrocket-database)   | Data enhancement | Expanded parts catalog (originally [dbcook/openrocket-database](https://github.com/dbcook/openrocket-database)) |
+- **AI Copilot bridge** — an embedded local MCP server (loopback-only). Toggle it from
+  **Tools → AI Copilot (MCP bridge)**, watch a live feed of every action the AI takes.
+- **40+ MCP tools** covering the whole workflow: full component CRUD, materials, real catalog
+  parts, motors, clustering, multi-stage, ignition/separation, recovery, **stability & mass/aero
+  analysis**, simulations, flight configs, **parameter optimisation**, custom expressions,
+  simulation extensions, and exports (RockSim/OpenRocket/OBJ/SVG/RASAERO/CSV).
+- **`save_screenshot`** — the AI captures the design view (2D schematic or 3D) as a PNG at each
+  iteration stage.
+- **`animate_flight`** — watch the rocket fly its simulated trajectory from launch to landing.
+- **`/goal` autonomous designer** — give a spec, the AI builds a complete, stable, flyable rocket
+  end-to-end (see [`docs/goal-command.md`](docs/goal-command.md)).
 
-### Integration & Scripting
-| Project                                                                                 | Type                       | Description                                                                         |
-|-----------------------------------------------------------------------------------------|----------------------------|-------------------------------------------------------------------------------------|
-| [openrocket/orhelper](https://github.com/openrocket/orhelper)                           | Integration (Python)       | Python scripting/module for OpenRocket (via JPype) (forked from [SilentSys/orhelper](https://github.com/SilentSys/orhelper)) |
-| [RocketPy-Team/RocketSerializer](https://github.com/RocketPy-Team/RocketSerializer)     | Integration (Python)       | Convert `.ork` files to RocketPy-compatible formats                                 |
-| [SpaceTeam/ortools](https://github.com/SpaceTeam/ortools)                               | Integration Tools (Python) | Scripts like 6DOF landing scatter visualization                                     |
-| [schrum2/OpenRocketQD](https://github.com/schrum2/OpenRocketQD)                         | Optimization tool (Python) | Quality Diversity optimization for rocket designs                                   |
-| [waterloo-rocketry/or-monte-carlo](https://github.com/waterloo-rocketry/or-monte-carlo) | Simulation tool (Java)     | Monte Carlo simulation wrapper for OpenRocket                                       |
+## 📦 Install
 
-### Engine & Aerodynamics Extensions
-| Project                                                              | Type                     | Description                            |
-|----------------------------------------------------------------------|--------------------------|----------------------------------------|
-| [SpaceTeam/ORLEG](https://github.com/SpaceTeam/ORLEG)                | Engine modeling (Python) | Liquid-engine generator for OpenRocket |
-| [WPI-HPRC/ORBrake](https://github.com/WPI-HPRC/ORBrake) *(archived)* | Plugin (Java)            | Active drag control (air-brakes)       |
+Download a build for your platform from the [**Releases**](../../releases) page:
 
-### Wind & Atmospheric Data
-| Project                                    | Type                     | Description                                                                          |
-|--------------------------------------------|--------------------------|--------------------------------------------------------------------------------------|
-| [ORWind](https://gpsdriftcast.com/orwind/) | Atmospheric data utility | Fetches/imports multi-level wind data for OpenRocket                                 |
-| [Aloft](https://aloft.onrender.com/)       | Weather data utility     | Retrieves weather/atmospheric profiles (winds, temp, pressure) for flight simulation |
+| Platform | File |
+|----------|------|
+| macOS | `OpenRocket-AI-<version>-macos.dmg` |
+| Windows | `OpenRocket-AI-<version>-windows.zip` (portable; run `OpenRocket-AI.exe`) |
+| Linux | `OpenRocket-AI-<version>-linux.deb` |
+| Any (needs Java 17) | `OpenRocket-AI-<version>.jar` → `java -jar OpenRocket-AI-<version>.jar` |
 
-### Design & CAD Integration
-| Project                                                               | Type          | Description                                                                   |
-|-----------------------------------------------------------------------|---------------|-------------------------------------------------------------------------------|
-| [FreeCAD Rocket Workbench](https://github.com/davesrocketshop/Rocket) | CAD workbench | A rocket design workbench for FreeCAD that can import OpenRocket `.ork` files |
+The native bundles include their own Java runtime — no separate Java install needed.
 
-### Example Designs / Showcase
-| Project                                                                           | Type            | Description             |
-|-----------------------------------------------------------------------------------|-----------------|-------------------------|
-| [TrinetraOne-OpenRocket](https://github.com/ChinmayBhattt/TrinetraOne-OpenRocket) | Example designs | Showcase rocket project |
+## 🤖 Using the AI bridge
 
----
+1. Launch OpenRocket-AI, open **Tools → AI Copilot (MCP bridge)**, click **Start**.
+2. Connect your agent:
+   ```bash
+   claude mcp add --transport http openrocket http://127.0.0.1:8723/mcp
+   ```
+3. Ask away — *"add a nose cone and body tube, give it a C6, make it stable, and tell me the
+   apogee"* — or run the autonomous designer: *"/goal a stable C-motor rocket reaching ~150 m"*.
 
-## 💪 Contribute
+Full tool reference and security notes: [`docs/ai-bridge.md`](docs/ai-bridge.md).
 
-Help us soar higher! Whether it's implementing features, writing documentation, or creating design examples, every contribution matters. Interested? Check out [how to get involved](https://openrocket.info/contribute.html) and the [practicalities of contributing](CONTRIBUTING.md).
+### Teaching any Claude to use it (Skill)
 
-### ✨ Contributors
-- [Sampo Niskanen](https://github.com/plaa) - Original developer
-- [Doug Pedrick](https://github.com/rodinia814) - RockSim designs, printing
-- [Kevin Ruland](https://github.com/kruland2607) - Android version
-- [Bill Kuker](https://github.com/bkuker) - 3D visualization
-- [Richard Graham](https://github.com/rdgraham) - Geodetic computations
-- Jason Blood - Freeform fin set import
-- [Boris du Reau](https://github.com/bdureau) - Internationalization
-- [Daniel Williams](https://github.com/teyrana) - Pod support, maintainer
-- [Joe Pfeiffer](https://github.com/JoePfeiffer) - Maintainer
-- [Billy Olsen](https://github.com/wolsen) - Maintainer
-- [Sibo Van Gool](https://github.com/SiboVG) - RASAero file format, 3D OBJ export, dark theme, maintainer
-- [Neil Weinstock](https://github.com/neilweinstock) - Tester, icons, forum support
-- [H. Craig Miller](https://github.com/hcraigmiller) - Tester
+Install the bundled [Agent Skill](skills/openrocket-ai/SKILL.md) so Claude always knows how to
+drive the bridge:
 
-You can view the full list of contributors [here](https://github.com/openrocket/openrocket/graphs/contributors).
+```bash
+mkdir -p ~/.claude/skills && cp -r skills/openrocket-ai ~/.claude/skills/
+```
 
-### 🌍Translators
-- Tripoli France
-- Tripoli Spain
-- Stefan Lobas / ERIG
-- Mauro Biasutti
-- Sky Dart Team / Ruslan V. Uss
-- Vladimir Beran
-- Polish Rocketry Society / Łukasz & Alex Kazanski
-- Sibo Van Gool
-- Mohamed Amin Elkebsi
-- Oleksandr Hladin
-- taotieren Simplified Chinese
+## 🛠️ Build from source
 
-Want to help us translate OpenRocket into your language? Join our [Crowdin project](https://crowdin.com/project/openrocket) and contribute!
+Requires **JDK 17** (the Gradle build will not run on newer JDKs):
 
-## 📜 License
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)   # macOS; use your JDK 17 path elsewhere
+git submodule update --init --recursive            # one-time: component database
+./gradlew run                                      # launch the GUI
+./gradlew shadowJar                                # build the cross-platform fat JAR
+```
 
-OpenRocket is proudly open-source under the [GNU GPL](https://www.gnu.org/licenses/gpl-3.0.en.html) license. Feel free to use, study, and extend.
+To build native installers locally (uses the JDK's `jpackage`):
 
----
- 
-⭐ Please give us a star if you find OpenRocket useful, and spread the word! ⭐
+```bash
+./gradlew shadowJar
+mkdir -p staging && cp build/libs/OpenRocket-*.jar staging/OpenRocket-AI.jar
+jpackage --input staging --name OpenRocket-AI --main-jar OpenRocket-AI.jar \
+  --main-class info.openrocket.swing.startup.OpenRocket --app-version 1.0.0 \
+  --type dmg --dest dist        # or: msi (Windows), deb (Linux), app-image (portable)
+```
 
-[![Star History Chart](https://api.star-history.com/svg?repos=openrocket/openrocket&type=Date)](https://star-history.com/#openrocket/openrocket&Date)
+CI builds installers for macOS/Windows/Linux on every `v*` tag — see
+[`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+## 📜 License & credits
+
+OpenRocket-AI is licensed under the **GNU GPL v3**, the same as upstream OpenRocket. All credit for
+the simulator goes to the OpenRocket project and its contributors. The original project README is
+preserved at [`README-OpenRocket-upstream.md`](README-OpenRocket-upstream.md).
+
+- Upstream: https://github.com/openrocket/openrocket
+- OpenRocket website & docs: https://openrocket.info/ · https://openrocket.readthedocs.io/

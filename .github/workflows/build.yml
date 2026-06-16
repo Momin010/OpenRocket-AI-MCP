@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - unstable
+      - master
+      - ai-bridge
   pull_request:
     branches:
       - unstable
+      - master
 
 jobs:
   gradle:

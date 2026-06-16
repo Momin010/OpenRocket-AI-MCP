@@ -1,0 +1,126 @@
+name: Release
+
+# Build cross-platform installers and publish a GitHub Release.
+# Trigger by pushing a tag like v1.0.0, or run manually.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'App version (numeric, e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: 'recursive'
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ github.event.inputs.version }}"
+          fi
+          [ -z "$V" ] && V="1.0.0"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Build fat JAR
+        shell: bash
+        run: ./gradlew shadowJar
+
+      - name: Stage JAR for jpackage
+        shell: bash
+        run: |
+          mkdir -p staging dist
+          cp build/libs/OpenRocket-*.jar staging/OpenRocket-AI.jar
+          cp build/libs/OpenRocket-*.jar "dist/OpenRocket-AI-${{ steps.ver.outputs.version }}.jar"
+
+      - name: Package (macOS dmg)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          jpackage --input staging --name "OpenRocket-AI" --main-jar OpenRocket-AI.jar \
+            --main-class info.openrocket.swing.startup.OpenRocket \
+            --app-version "${{ steps.ver.outputs.version }}" --type dmg --dest dist \
+            --java-options "-Dapple.awt.application.appearance=system" \
+            --java-options "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" \
+            --java-options "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED" \
+            --java-options "--add-exports=java.base/java.lang=ALL-UNNAMED"
+          mv dist/OpenRocket-AI-*.dmg "dist/OpenRocket-AI-${{ steps.ver.outputs.version }}-macos.dmg" || true
+
+      - name: Package (Linux deb)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          jpackage --input staging --name "openrocket-ai" --main-jar OpenRocket-AI.jar \
+            --main-class info.openrocket.swing.startup.OpenRocket \
+            --app-version "${{ steps.ver.outputs.version }}" --type deb --dest dist \
+            --java-options "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" \
+            --java-options "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED" \
+            --java-options "--add-exports=java.base/java.lang=ALL-UNNAMED"
+          mv dist/*.deb "dist/OpenRocket-AI-${{ steps.ver.outputs.version }}-linux.deb" || true
+
+      - name: Package (Windows portable app + exe)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          jpackage --input staging --name "OpenRocket-AI" --main-jar OpenRocket-AI.jar \
+            --main-class info.openrocket.swing.startup.OpenRocket \
+            --app-version "${{ steps.ver.outputs.version }}" --type app-image --dest appimage \
+            --java-options "-Dsun.java2d.d3d=false" \
+            --java-options "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" \
+            --java-options "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED" \
+            --java-options "--add-exports=java.base/java.lang=ALL-UNNAMED"
+          cd appimage && 7z a "../dist/OpenRocket-AI-${{ steps.ver.outputs.version }}-windows.zip" "OpenRocket-AI" >/dev/null
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: openrocket-ai-${{ matrix.platform }}
+          path: |
+            dist/*.dmg
+            dist/*.deb
+            dist/*.zip
+            dist/*.jar
+
+      - name: Attach to GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.deb
+            dist/*.zip
+            dist/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

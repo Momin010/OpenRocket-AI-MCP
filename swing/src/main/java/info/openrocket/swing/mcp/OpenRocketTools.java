@@ -55,13 +55,21 @@ import info.openrocket.core.simulation.customexpression.CustomExpression;
 import info.openrocket.core.simulation.extension.SimulationExtension;
 import info.openrocket.core.startup.Application;
 import info.openrocket.swing.gui.export.SVGRocketPartsExporter;
+import info.openrocket.swing.gui.figure3d.RocketFigure3d;
+import info.openrocket.swing.gui.scalefigure.RocketFigure;
+import info.openrocket.swing.gui.scalefigure.RocketPanel;
 import info.openrocket.core.util.Coordinate;
 import info.openrocket.core.util.CoordinateIF;
 import info.openrocket.core.util.MathUtil;
 import info.openrocket.core.util.ORColor;
 import info.openrocket.swing.gui.main.BasicFrame;
 
+import javax.imageio.ImageIO;
 import javax.swing.SwingUtilities;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
@@ -101,6 +109,7 @@ public class OpenRocketTools {
 			case "new_design":          return newDesign(args);
 			case "open_file":           return openFile(args);
 			case "save_file":           return saveFile(args);
+			case "save_screenshot":     return saveScreenshot(args);
 			case "get_component_tree":  return getComponentTree(args);
 			case "get_component":       return getComponent(args);
 			case "get_stability":       return getStability(args);
@@ -131,6 +140,7 @@ public class OpenRocketTools {
 			case "run_simulation":      return runSimulation(args);
 			case "get_simulation_results": return getSimulationResults(args);
 			case "get_flight_data":     return getFlightData(args);
+			case "animate_flight":      return animateFlight(args);
 			case "export_design":       return exportDesign(args);
 			case "set_simulation_options": return setSimulationOptions(args);
 			case "add_simulation_extension": return addSimulationExtension(args);
@@ -230,6 +240,66 @@ public class OpenRocketTools {
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
 		result.addProperty("file", dest.getAbsolutePath());
+		return result;
+	}
+
+	/**
+	 * Save a screenshot of the design view to a PNG file. view "2d" (default) paints the schematic
+	 * figure (viewType side/back/top); view "3d" captures the live 3D view's framebuffer. This is the
+	 * "shutter" — call it at each design stage to capture the work.
+	 */
+	private JsonObject saveScreenshot(JsonObject args) throws Exception {
+		BasicFrame frame = activeFrame(args);
+		String path = requireString(args, "path");
+		String view = optString(args, "view", "2d").toLowerCase();
+		String viewType = optString(args, "viewType", "side").toLowerCase();
+		File f = new File(path);
+		if (!f.getName().toLowerCase().endsWith(".png")) {
+			f = new File(f.getAbsolutePath() + ".png");
+		}
+		final File dest = f;
+
+		BufferedImage image = onEdtCompute(() -> {
+			RocketPanel panel = frame.getRocketPanel();
+			if (view.equals("3d")) {
+				RocketFigure3d fig3d = panel.getFigure3d();
+				return fig3d == null ? null : fig3d.captureImage();
+			}
+			RocketFigure fig = panel.getFigure();
+			switch (viewType) {
+				case "back": fig.setType(RocketPanel.VIEW_TYPE.BackView); break;
+				case "top":  fig.setType(RocketPanel.VIEW_TYPE.TopView); break;
+				default:     fig.setType(RocketPanel.VIEW_TYPE.SideView); break;
+			}
+			Dimension size = fig.getSize();
+			if (size.width <= 0 || size.height <= 0) {
+				size = fig.getPreferredSize();
+				fig.setSize(size);
+				fig.doLayout();
+			}
+			BufferedImage img = new BufferedImage(Math.max(1, size.width), Math.max(1, size.height),
+					BufferedImage.TYPE_INT_ARGB);
+			Graphics2D g = img.createGraphics();
+			g.setColor(Color.WHITE);
+			g.fillRect(0, 0, img.getWidth(), img.getHeight());
+			fig.paint(g);
+			g.dispose();
+			return img;
+		});
+
+		if (image == null) {
+			throw new ToolException(view.equals("3d")
+					? "Could not capture the 3D view. Open the 3D view in OpenRocket first (the GL "
+					+ "canvas must be initialised), or use view=\"2d\"."
+					: "Could not render the design figure.");
+		}
+		ImageIO.write(image, "png", dest);
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("file", dest.getAbsolutePath());
+		result.addProperty("view", view);
+		result.addProperty("width", image.getWidth());
+		result.addProperty("height", image.getHeight());
 		return result;
 	}
 
@@ -1203,6 +1273,60 @@ public class OpenRocketTools {
 		return result;
 	}
 
+	/** Open an animated playback window of the rocket flying its simulated trajectory. */
+	private JsonObject animateFlight(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		Simulation sim = resolveSimulation(doc, args);
+		FlightData data = sim.getSimulatedData();
+		if (data == null || data.getBranchCount() == 0) {
+			sim.simulate();
+			data = sim.getSimulatedData();
+		}
+		if (data == null || data.getBranchCount() == 0) {
+			throw new ToolException("No flight data; the simulation produced none.");
+		}
+		FlightDataBranch branch = data.getBranch(0);
+		int len = branch.getLength();
+		if (len < 2) {
+			throw new ToolException("Flight is too short to animate.");
+		}
+		double[] tArr = series(branch, FlightDataType.TYPE_TIME, len);
+		final double[] t = tArr != null ? tArr : new double[len];
+		final double[] alt = orZeros(series(branch, FlightDataType.TYPE_ALTITUDE, len), len);
+		final double[] range = orZeros(series(branch, FlightDataType.TYPE_POSITION_X, len), len);
+		final double[] pitch = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
+		final double[] vel = orZeros(series(branch, FlightDataType.TYPE_VELOCITY_TOTAL, len), len);
+		final String name = sim.getName();
+		onEdt(() -> {
+			FlightAnimationFrame.show(name, t, alt, range, pitch, vel);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("simulation", name);
+		result.addProperty("frames", len);
+		result.addProperty("flightTime", t[len - 1]);
+		result.addProperty("note", "An animation window opened in OpenRocket showing the flight.");
+		return result;
+	}
+
+	private static double[] series(FlightDataBranch branch, FlightDataType type, int len) {
+		List<Double> vals = branch.get(type);
+		if (vals == null || vals.isEmpty()) {
+			return null;
+		}
+		double[] arr = new double[len];
+		for (int i = 0; i < len && i < vals.size(); i++) {
+			Double v = vals.get(i);
+			arr[i] = (v == null || v.isNaN()) ? 0 : v;
+		}
+		return arr;
+	}
+
+	private static double[] orZeros(double[] arr, int len) {
+		return arr != null ? arr : new double[len];
+	}
+
 	/** Export the active design: rocksim (.rkt), openrocket (.ork), obj (3D print), svg (laser cut). */
 	private JsonObject exportDesign(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
@@ -1824,6 +1948,11 @@ public class OpenRocketTools {
 		tools.add(tool("save_file",
 				"Save the active design. Optionally provide a path to save-as.",
 				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("save_screenshot",
+				"Save a PNG screenshot of the design. view '2d' (default) renders the schematic "
+				+ "(viewType side/back/top); view '3d' captures the live 3D view. Use this to snapshot "
+				+ "each design iteration.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"view\":{\"type\":\"string\"},\"viewType\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("get_component_tree",
 				"Get the full component tree of the active design (ids, types, names, nesting).",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
@@ -1892,6 +2021,10 @@ public class OpenRocketTools {
 				"Get the downsampled flight time-series (time, altitude, velocity, acceleration, mach, "
 				+ "stability) for a simulation. Optionally write a full-resolution CSV via csvPath.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"maxPoints\":{\"type\":\"integer\"},\"csvPath\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("animate_flight",
+				"Open an animated playback window showing the rocket flying its simulated trajectory "
+				+ "(downrange x altitude) from launch to landing, with boost flame and parachute.",
+				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
 		tools.add(tool("export_design",
 				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
 				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",

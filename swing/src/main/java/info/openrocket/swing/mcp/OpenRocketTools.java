@@ -141,6 +141,7 @@ public class OpenRocketTools {
 			case "get_simulation_results": return getSimulationResults(args);
 			case "get_flight_data":     return getFlightData(args);
 			case "animate_flight":      return animateFlight(args);
+			case "render_flight_video": return renderFlightVideo(args);
 			case "export_design":       return exportDesign(args);
 			case "set_simulation_options": return setSimulationOptions(args);
 			case "add_simulation_extension": return addSimulationExtension(args);
@@ -1310,6 +1311,103 @@ public class OpenRocketTools {
 		return result;
 	}
 
+	/** Render a cinematic multi-camera MP4 of the flight (3D software renderer + ffmpeg). */
+	private JsonObject renderFlightVideo(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		Simulation sim = resolveSimulation(doc, args);
+		FlightData data = sim.getSimulatedData();
+		if (data == null || data.getBranchCount() == 0) {
+			sim.simulate();
+			data = sim.getSimulatedData();
+		}
+		if (data == null || data.getBranchCount() == 0) {
+			throw new ToolException("No flight data; the simulation produced none.");
+		}
+		FlightDataBranch branch = data.getBranch(0);
+		int len = branch.getLength();
+		if (len < 2) {
+			throw new ToolException("Flight is too short to render.");
+		}
+
+		String ffmpeg = findFfmpeg();
+		if (ffmpeg == null) {
+			throw new ToolException("ffmpeg was not found. Install it (e.g. `brew install ffmpeg`) "
+					+ "so the video can be encoded.");
+		}
+
+		String path = requireString(args, "path");
+		if (!path.toLowerCase().endsWith(".mp4")) {
+			path = path + ".mp4";
+		}
+		final File out = new File(path);
+		int w = args.has("width") ? args.get("width").getAsInt() : 1280;
+		int h = args.has("height") ? args.get("height").getAsInt() : 720;
+		int fps = args.has("fps") ? args.get("fps").getAsInt() : 30;
+		double seconds = args.has("seconds") ? args.get("seconds").getAsDouble() : 20;
+		FlightVideoRenderer.Scene scene;
+		try {
+			scene = FlightVideoRenderer.Scene.valueOf(optString(args, "scene", "day").toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new ToolException("Unknown scene. Options: day, sunset, space.");
+		}
+
+		double[] tt = orZeros(series(branch, FlightDataType.TYPE_TIME, len), len);
+		double[] alt = orZeros(series(branch, FlightDataType.TYPE_ALTITUDE, len), len);
+		double[] range = orZeros(series(branch, FlightDataType.TYPE_POSITION_X, len), len);
+		double[] pitch = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
+		double[] vel = orZeros(series(branch, FlightDataType.TYPE_VELOCITY_TOTAL, len), len);
+
+		double[] dims = onEdtCompute(() -> {
+			FlightConfiguration cfg = doc.getRocket().getSelectedConfiguration();
+			double rad = 0;
+			for (RocketComponent c : cfg.getCoreComponents()) {
+				if (c instanceof SymmetricComponent) {
+					rad = Math.max(rad, Math.max(((SymmetricComponent) c).getForeRadius(),
+							((SymmetricComponent) c).getAftRadius()));
+				}
+			}
+			if (rad <= 0) {
+				rad = 0.012;
+			}
+			return new double[]{cfg.getLength(), rad, rad * 3};
+		});
+
+		String name = sim.getName();
+		File poster = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + "-poster.png");
+		FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, pitch, vel,
+				dims[0], dims[1], dims[2], w, h, fps, seconds, scene);
+		int frames = r.render(out, poster, ffmpeg);
+
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("file", out.getAbsolutePath());
+		result.addProperty("poster", poster.getAbsolutePath());
+		result.addProperty("frames", frames);
+		result.addProperty("durationSeconds", seconds);
+		result.addProperty("scene", scene.name());
+		result.addProperty("resolution", w + "x" + h);
+		return result;
+	}
+
+	private static String findFfmpeg() {
+		String[] candidates = {"/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/bin/ffmpeg"};
+		for (String c : candidates) {
+			if (new File(c).canExecute()) {
+				return c;
+			}
+		}
+		String pathEnv = System.getenv("PATH");
+		if (pathEnv != null) {
+			for (String dir : pathEnv.split(File.pathSeparator)) {
+				File f = new File(dir, "ffmpeg");
+				if (f.canExecute()) {
+					return f.getAbsolutePath();
+				}
+			}
+		}
+		return null;
+	}
+
 	private static double[] series(FlightDataBranch branch, FlightDataType type, int len) {
 		List<Double> vals = branch.get(type);
 		if (vals == null || vals.isEmpty()) {
@@ -2025,6 +2123,12 @@ public class OpenRocketTools {
 				"Open an animated playback window showing the rocket flying its simulated trajectory "
 				+ "(downrange x altitude) from launch to landing, with boost flame and parachute.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("render_flight_video",
+				"Render a cinematic MP4 of the rocket flying its simulated trajectory in 3D, with "
+				+ "multiple auto-tracking cameras (ground/chase/orbit/onboard/recovery) that cut "
+				+ "through the launch. scene: day/sunset/space. Args: path, scene, seconds, fps, "
+				+ "width, height. Requires ffmpeg installed.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("export_design",
 				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
 				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",

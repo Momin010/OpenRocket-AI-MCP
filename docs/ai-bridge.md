@@ -51,7 +51,8 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `new_design` | Create a new empty rocket in a new window |
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `save_screenshot` | Save a PNG of the design view (2D schematic side/back/top, or 3D) |
-| `animate_flight` | Open an animated playback of the rocket flying its trajectory |
+| `animate_flight` | Open an animated 2D playback of the rocket flying its trajectory |
+| `render_flight_video` | Render a cinematic 3D multi-camera MP4 of the launch (needs ffmpeg) |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
 | `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |

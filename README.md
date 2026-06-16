@@ -56,11 +56,16 @@ Full tool reference and security notes: [`docs/ai-bridge.md`](docs/ai-bridge.md)
 ### Teaching any Claude to use it (Skill)
 
 Install the bundled [Agent Skill](skills/openrocket-ai/SKILL.md) so Claude always knows how to
-drive the bridge:
+drive the bridge. **No clone needed** — fetch it straight from GitHub:
 
 ```bash
-mkdir -p ~/.claude/skills && cp -r skills/openrocket-ai ~/.claude/skills/
+mkdir -p ~/.claude/skills/openrocket-ai && \
+  curl -fsSL https://raw.githubusercontent.com/Momin010/OpenRocket-AI-MCP/master/skills/openrocket-ai/SKILL.md \
+  -o ~/.claude/skills/openrocket-ai/SKILL.md
 ```
+
+> Already cloned the repo? From its root you can instead run
+> `cp -r skills/openrocket-ai ~/.claude/skills/`.
 
 ## 🛠️ Build from source
 

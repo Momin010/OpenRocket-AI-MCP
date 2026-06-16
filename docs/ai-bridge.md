@@ -52,14 +52,30 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
+| `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |
 | `list_component_types` | Component types that `add_component` accepts |
 | `add_component` | Add a component of any type under a parent |
 | `set_component` | Set any parameter(s) of a component |
 | `delete_component` | Delete a component (and its children) |
+| `list_flight_configs` / `add_flight_config` / `select_flight_config` | Manage flight configurations |
 | `list_simulations` / `add_simulation` / `delete_simulation` | Manage simulations |
-| `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/etc. (SI units) |
+| `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/descent/warnings (SI units) |
+| `set_simulation_options` | Set launch conditions (rod, wind, altitude, temperature, …) |
 | `search_motors` | Search the thrust-curve motor database |
 | `set_motor` | Assign a motor to a mount (auto-creates a flight configuration) |
+
+## Autonomous design: the `/goal` command
+
+`docs/goal-command.md` is a Claude Code slash command that drives these tools to design a
+complete rocket from a natural-language spec — build, check stability, simulate, size recovery,
+and iterate until the spec is met. Install it with:
+
+```bash
+mkdir -p .claude/commands && cp docs/goal-command.md .claude/commands/goal.md
+```
+
+Then, with the bridge connected, run e.g.
+`/goal a stable C-motor rocket that reaches ~150 m and lands at ~4 m/s`.
 
 `get_component` / `set_component` are **generic** — they introspect each component's
 bean properties, so any parameter a human can edit in the GUI is reachable by name

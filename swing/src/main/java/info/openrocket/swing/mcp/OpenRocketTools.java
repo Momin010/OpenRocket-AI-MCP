@@ -7,6 +7,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
+import info.openrocket.core.aerodynamics.AerodynamicCalculator;
+import info.openrocket.core.aerodynamics.BarrowmanCalculator;
+import info.openrocket.core.aerodynamics.FlightConditions;
 import info.openrocket.core.database.motor.ThrustCurveMotorSet;
 import info.openrocket.core.database.motor.ThrustCurveMotorSetDatabase;
 import info.openrocket.core.document.OpenRocketDocument;
@@ -14,6 +17,9 @@ import info.openrocket.core.document.OpenRocketDocumentFactory;
 import info.openrocket.core.document.Simulation;
 import info.openrocket.core.file.GeneralRocketLoader;
 import info.openrocket.core.file.GeneralRocketSaver;
+import info.openrocket.core.logging.Warning;
+import info.openrocket.core.logging.WarningSet;
+import info.openrocket.core.masscalc.MassCalculator;
 import info.openrocket.core.motor.MotorConfiguration;
 import info.openrocket.core.motor.ThrustCurveMotor;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
@@ -21,8 +27,11 @@ import info.openrocket.core.rocketcomponent.FlightConfigurationId;
 import info.openrocket.core.rocketcomponent.MotorMount;
 import info.openrocket.core.rocketcomponent.Rocket;
 import info.openrocket.core.rocketcomponent.RocketComponent;
+import info.openrocket.core.rocketcomponent.SymmetricComponent;
 import info.openrocket.core.simulation.FlightData;
 import info.openrocket.core.startup.Application;
+import info.openrocket.core.util.CoordinateIF;
+import info.openrocket.core.util.MathUtil;
 import info.openrocket.swing.gui.main.BasicFrame;
 
 import javax.swing.SwingUtilities;
@@ -64,6 +73,7 @@ public class OpenRocketTools {
 			case "save_file":           return saveFile(args);
 			case "get_component_tree":  return getComponentTree(args);
 			case "get_component":       return getComponent(args);
+			case "get_stability":       return getStability(args);
 			case "list_component_types":return listComponentTypes();
 			case "add_component":       return addComponent(args);
 			case "set_component":       return setComponent(args);
@@ -236,6 +246,60 @@ public class OpenRocketTools {
 			}
 		}
 		return props;
+	}
+
+	/**
+	 * Compute the key design metrics a human watches: center of gravity, center of pressure,
+	 * stability margin (calibers), reference diameter, length and mass. This is what lets an
+	 * agent design a stable rocket. Mirrors the calculation OpenRocket shows in the figure.
+	 */
+	private JsonObject getStability(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		return onEdtCompute(() -> {
+			Rocket rocket = doc.getRocket();
+			FlightConfiguration config = rocket.getSelectedConfiguration();
+
+			FlightConditions conditions = new FlightConditions(config);
+			conditions.setMach(Application.getPreferences().getDefaultMach());
+			conditions.setAOA(0);
+			conditions.setRollRate(0);
+
+			WarningSet warnings = new WarningSet();
+			AerodynamicCalculator aero = new BarrowmanCalculator();
+			CoordinateIF cp = aero.getWorstCP(config, conditions, warnings);
+			CoordinateIF cg = MassCalculator.calculateLaunch(config).getCM();
+
+			double cpx = cp.getWeight() > MathUtil.EPSILON ? cp.getX() : Double.NaN;
+			double cgx = cg.getWeight() > MassCalculator.MIN_MASS ? cg.getX() : Double.NaN;
+
+			double diameter = Double.NaN;
+			for (RocketComponent c : config.getCoreComponents()) {
+				if (c instanceof SymmetricComponent) {
+					double d1 = ((SymmetricComponent) c).getForeRadius() * 2;
+					double d2 = ((SymmetricComponent) c).getAftRadius() * 2;
+					diameter = MathUtil.max(diameter, d1, d2);
+				}
+			}
+			double margin = (!Double.isNaN(diameter) && diameter > 0) ? (cpx - cgx) / diameter : Double.NaN;
+			double emptyMass = MassCalculator.calculateStructure(config).getMass();
+
+			JsonObject r = new JsonObject();
+			r.addProperty("cg", cgx);
+			r.addProperty("cp", cpx);
+			r.addProperty("stabilityMarginCalibers", margin);
+			r.addProperty("referenceDiameter", diameter);
+			r.addProperty("lengthMeters", config.getLength());
+			r.addProperty("massWithMotorsKg", cg.getWeight());
+			r.addProperty("massEmptyKg", emptyMass);
+			r.addProperty("units", "distances in meters from the nose tip; mass in kg");
+			r.addProperty("note", "Stability margin is in calibers; a stable rocket is typically 1-2.");
+			JsonArray warns = new JsonArray();
+			for (Warning w : warnings) {
+				warns.add(w.toString());
+			}
+			r.add("warnings", warns);
+			return r;
+		});
 	}
 
 	// ------------------------------------------------------------------
@@ -653,6 +717,26 @@ public class OpenRocketTools {
 		return c;
 	}
 
+	/** Run a body of work on the EDT, wait for it, and return its result. */
+	private <T> T onEdtCompute(Callable<T> work) throws Exception {
+		if (SwingUtilities.isEventDispatchThread()) {
+			return work.call();
+		}
+		AtomicReference<T> result = new AtomicReference<>();
+		AtomicReference<Exception> err = new AtomicReference<>();
+		SwingUtilities.invokeAndWait(() -> {
+			try {
+				result.set(work.call());
+			} catch (Exception e) {
+				err.set(e);
+			}
+		});
+		if (err.get() != null) {
+			throw err.get();
+		}
+		return result.get();
+	}
+
 	/** Run a body of work on the EDT and wait for it, surfacing any exception. */
 	private void onEdt(Callable<Void> work) throws Exception {
 		if (SwingUtilities.isEventDispatchThread()) {
@@ -802,6 +886,11 @@ public class OpenRocketTools {
 		tools.add(tool("get_component",
 				"Get every readable parameter of a single component by id.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
+		tools.add(tool("get_stability",
+				"Get the key design metrics for the active design's selected configuration: CG, CP, "
+				+ "stability margin (calibers), reference diameter, length, and mass (with/without motors). "
+				+ "Use this to design a stable rocket (aim for ~1-2 calibers).",
+				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
 		tools.add(tool("list_component_types",
 				"List the component type names that can be added with add_component.",
 				"{\"type\":\"object\",\"properties\":{}}"));

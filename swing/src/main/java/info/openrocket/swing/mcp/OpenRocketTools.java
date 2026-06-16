@@ -52,6 +52,7 @@ import info.openrocket.core.simulation.FlightDataBranch;
 import info.openrocket.core.simulation.FlightDataType;
 import info.openrocket.core.simulation.SimulationOptions;
 import info.openrocket.core.simulation.customexpression.CustomExpression;
+import info.openrocket.core.simulation.extension.SimulationExtension;
 import info.openrocket.core.startup.Application;
 import info.openrocket.swing.gui.export.SVGRocketPartsExporter;
 import info.openrocket.core.util.Coordinate;
@@ -132,6 +133,7 @@ public class OpenRocketTools {
 			case "get_flight_data":     return getFlightData(args);
 			case "export_design":       return exportDesign(args);
 			case "set_simulation_options": return setSimulationOptions(args);
+			case "add_simulation_extension": return addSimulationExtension(args);
 			case "optimize_parameter":  return optimizeParameter(args);
 			case "delete_simulation":   return deleteSimulation(args);
 			case "search_motors":       return searchMotors(args);
@@ -1417,6 +1419,53 @@ public class OpenRocketTools {
 		});
 	}
 
+	private JsonObject addSimulationExtension(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		Simulation sim = resolveSimulation(doc, args);
+		String type = requireString(args, "type");
+		Class<?> clazz = null;
+		for (String pkg : new String[] {
+				"info.openrocket.core.simulation.extension.example.",
+				"info.openrocket.core.simulation.extension.impl." }) {
+			try {
+				clazz = Class.forName(pkg + type);
+				break;
+			} catch (ClassNotFoundException ignore) {
+				// try next package
+			}
+		}
+		if (clazz == null || !SimulationExtension.class.isAssignableFrom(clazz)) {
+			throw new ToolException("Unknown simulation extension '" + type + "'. Options: "
+					+ "AirStart, StopSimulation, RollControl, DampingMoment, CSVSave, PrintSimulation, "
+					+ "ScriptingExtension.");
+		}
+		final Class<?> extClass = clazz;
+		final JsonObject properties = (args.has("properties") && args.get("properties").isJsonObject())
+				? args.getAsJsonObject("properties") : new JsonObject();
+		JsonObject applied = new JsonObject();
+		JsonObject failed = new JsonObject();
+		onEdt(() -> {
+			SimulationExtension ext = (SimulationExtension) extClass.getDeclaredConstructor().newInstance();
+			for (String key : properties.keySet()) {
+				try {
+					applied.add(key, toJson(applyProperty(ext, key, properties.get(key))));
+				} catch (Exception e) {
+					failed.addProperty(key, e.getMessage());
+				}
+			}
+			sim.getSimulationExtensions().add(ext);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("extension", type);
+		result.add("applied", applied);
+		if (failed.size() > 0) {
+			result.add("failed", failed);
+		}
+		return result;
+	}
+
 	private JsonObject deleteSimulation(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
 		int index = requireInt(args, "index");
@@ -1887,6 +1936,11 @@ public class OpenRocketTools {
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"
 				+ "\"launchAltitude\":0.0,\"launchTemperature\":288.15}.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"properties\":{\"type\":\"object\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"properties\"]}"));
+		tools.add(tool("add_simulation_extension",
+				"Attach a simulation extension to a simulation. type: AirStart (setLaunchAltitude/"
+				+ "setLaunchVelocity), StopSimulation (setStopTime/setStopStep), RollControl, "
+				+ "DampingMoment, CSVSave, PrintSimulation. properties is a map of setter values.",
+				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"type\":{\"type\":\"string\"},\"properties\":{\"type\":\"object\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"type\"]}"));
 		tools.add(tool("optimize_parameter",
 				"Auto-tune one scalar component parameter over [min,max] to meet a goal. objective is "
 				+ "'max_apogee', 'target_apogee' (give target metres) or 'target_stability' (give target "

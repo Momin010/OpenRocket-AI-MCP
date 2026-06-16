@@ -73,6 +73,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `set_deployment` | Recovery device deploy event/altitude/delay |
 | `move_component` / `duplicate_component` | Reparent or duplicate a component |
 | `set_simulation_options` | Set launch conditions (rod, wind, altitude, temperature, …) |
+| `add_simulation_extension` | Attach extensions (AirStart, StopSimulation, RollControl, …) |
 | `optimize_parameter` | Auto-tune a component parameter for max/target apogee or target stability |
 | `search_motors` | Search the thrust-curve motor database |
 | `set_motor` | Assign a motor to a mount (auto-creates a flight configuration) |

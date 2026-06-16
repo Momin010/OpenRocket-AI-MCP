@@ -94,18 +94,23 @@ jobs:
             --java-options "--add-exports=java.base/java.lang=ALL-UNNAMED"
           mv dist/*.deb "dist/OpenRocket-AI-${{ steps.ver.outputs.version }}-linux.deb" || true
 
-      - name: Package (Windows portable app + exe)
+      - name: Package (Windows exe installer)
         if: matrix.platform == 'windows'
-        shell: bash
+        shell: pwsh
         run: |
-          jpackage --input staging --name "OpenRocket-AI" --main-jar OpenRocket-AI.jar \
-            --main-class info.openrocket.swing.startup.OpenRocket \
-            --app-version "${{ steps.ver.outputs.version }}" --type app-image --dest appimage \
-            --java-options "-Dsun.java2d.d3d=false" \
-            --java-options "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" \
-            --java-options "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED" \
+          # jpackage needs the WiX Toolset (v3) to build a Windows installer.
+          choco install wixtoolset --no-progress -y
+          $candle = Get-ChildItem "C:\Program Files (x86)" -Recurse -Filter candle.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($candle) { $env:PATH = "$($candle.DirectoryName);$env:PATH" }
+          jpackage --input staging --name "OpenRocket-AI" --main-jar OpenRocket-AI.jar `
+            --main-class info.openrocket.swing.startup.OpenRocket `
+            --app-version "${{ steps.ver.outputs.version }}" --type exe --dest dist `
+            --win-shortcut --win-menu --win-dir-chooser `
+            --java-options "-Dsun.java2d.d3d=false" `
+            --java-options "--add-exports=java.desktop/sun.awt=ALL-UNNAMED" `
+            --java-options "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED" `
             --java-options "--add-exports=java.base/java.lang=ALL-UNNAMED"
-          cd appimage && 7z a "../dist/OpenRocket-AI-${{ steps.ver.outputs.version }}-windows.zip" "OpenRocket-AI" >/dev/null
+          Get-ChildItem dist\*.exe | ForEach-Object { Move-Item $_.FullName "dist\OpenRocket-AI-${{ steps.ver.outputs.version }}-windows.exe" -Force }
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v5
@@ -114,7 +119,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.deb
-            dist/*.zip
+            dist/*.exe
             dist/*.jar
 
       - name: Attach to GitHub Release
@@ -124,7 +129,7 @@ jobs:
           files: |
             dist/*.dmg
             dist/*.deb
-            dist/*.zip
+            dist/*.exe
             dist/*.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

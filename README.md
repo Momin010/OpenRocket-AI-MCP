@@ -35,7 +35,7 @@ Download a build for your platform from the [**Releases**](../../releases) page:
 | Platform | File |
 |----------|------|
 | macOS | `OpenRocket-AI-<version>-macos.dmg` |
-| Windows | `OpenRocket-AI-<version>-windows.zip` (portable; run `OpenRocket-AI.exe`) |
+| Windows | `OpenRocket-AI-<version>-windows.exe` (installer) |
 | Linux | `OpenRocket-AI-<version>-linux.deb` |
 | Any (needs Java 17) | `OpenRocket-AI-<version>.jar` → `java -jar OpenRocket-AI-<version>.jar` |
 

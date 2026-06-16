@@ -13,6 +13,10 @@ on:
         required: false
         default: '1.0.0'
 
+# Allow the workflow token to create/update releases.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:

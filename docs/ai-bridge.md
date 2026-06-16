@@ -64,7 +64,12 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `list_simulations` / `add_simulation` / `delete_simulation` | Manage simulations |
 | `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/descent/warnings (SI units) |
 | `get_flight_data` | Downsampled flight time-series (+ optional CSV export) |
-| `export_design` | Export to RockSim (.rkt) or OpenRocket (.ork) |
+| `export_design` | Export to RockSim (.rkt), OpenRocket (.ork), OBJ (3D print), SVG (laser cut), RASAERO (.CDX1) |
+| `set_ignition` / `set_separation` | Motor ignition event/delay and stage separation event/delay |
+| `set_appearance` | Set a component's colour / shine |
+| `set_fin_points` | Set a freeform fin profile from [x,y] points |
+| `add_custom_expression` | Add a custom flight-data expression |
+| `component_mass_analysis` | Per-component mass + CG breakdown |
 | `set_simulation_options` | Set launch conditions (rod, wind, altitude, temperature, …) |
 | `optimize_parameter` | Auto-tune a component parameter for max/target apogee or target stability |
 | `search_motors` | Search the thrust-curve motor database |

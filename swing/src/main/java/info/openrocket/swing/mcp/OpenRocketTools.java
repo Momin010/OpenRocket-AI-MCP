@@ -10,6 +10,7 @@ import com.google.gson.JsonPrimitive;
 import info.openrocket.core.aerodynamics.AerodynamicCalculator;
 import info.openrocket.core.aerodynamics.BarrowmanCalculator;
 import info.openrocket.core.aerodynamics.FlightConditions;
+import info.openrocket.core.appearance.Appearance;
 import info.openrocket.core.database.Database;
 import info.openrocket.core.database.Databases;
 import info.openrocket.core.database.motor.ThrustCurveMotorSet;
@@ -20,17 +21,25 @@ import info.openrocket.core.document.Simulation;
 import info.openrocket.core.document.StorageOptions;
 import info.openrocket.core.file.GeneralRocketLoader;
 import info.openrocket.core.file.GeneralRocketSaver;
+import info.openrocket.core.file.svg.export.SVGExportOptions;
+import info.openrocket.core.file.wavefrontobj.export.OBJExportOptions;
+import info.openrocket.core.file.wavefrontobj.export.OBJExporterFactory;
 import info.openrocket.core.logging.Warning;
 import info.openrocket.core.logging.WarningSet;
+import info.openrocket.core.masscalc.CMAnalysisEntry;
 import info.openrocket.core.masscalc.MassCalculator;
 import info.openrocket.core.material.Material;
+import info.openrocket.core.motor.IgnitionEvent;
 import info.openrocket.core.motor.MotorConfiguration;
 import info.openrocket.core.motor.ThrustCurveMotor;
 import info.openrocket.core.preset.ComponentPreset;
+import info.openrocket.core.rocketcomponent.AxialStage;
 import info.openrocket.core.rocketcomponent.ClusterConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfigurationId;
+import info.openrocket.core.rocketcomponent.FreeformFinSet;
 import info.openrocket.core.rocketcomponent.InnerTube;
+import info.openrocket.core.rocketcomponent.StageSeparationConfiguration;
 import info.openrocket.core.rocketcomponent.MotorMount;
 import info.openrocket.core.rocketcomponent.Rocket;
 import info.openrocket.core.rocketcomponent.RocketComponent;
@@ -39,9 +48,13 @@ import info.openrocket.core.simulation.FlightData;
 import info.openrocket.core.simulation.FlightDataBranch;
 import info.openrocket.core.simulation.FlightDataType;
 import info.openrocket.core.simulation.SimulationOptions;
+import info.openrocket.core.simulation.customexpression.CustomExpression;
 import info.openrocket.core.startup.Application;
+import info.openrocket.swing.gui.export.SVGRocketPartsExporter;
+import info.openrocket.core.util.Coordinate;
 import info.openrocket.core.util.CoordinateIF;
 import info.openrocket.core.util.MathUtil;
+import info.openrocket.core.util.ORColor;
 import info.openrocket.swing.gui.main.BasicFrame;
 
 import javax.swing.SwingUtilities;
@@ -96,6 +109,12 @@ public class OpenRocketTools {
 			case "search_presets":      return searchPresets(args);
 			case "apply_preset":        return applyPreset(args);
 			case "set_cluster":         return setCluster(args);
+			case "set_ignition":        return setIgnition(args);
+			case "set_separation":      return setSeparation(args);
+			case "set_appearance":      return setAppearance(args);
+			case "set_fin_points":      return setFinPoints(args);
+			case "add_custom_expression": return addCustomExpression(args);
+			case "component_mass_analysis": return componentMassAnalysis(args);
 			case "list_flight_configs": return listFlightConfigs(args);
 			case "add_flight_config":   return addFlightConfig(args);
 			case "select_flight_config":return selectFlightConfig(args);
@@ -684,6 +703,165 @@ public class OpenRocketTools {
 	}
 
 	// ------------------------------------------------------------------
+	// Staging / ignition / appearance / fins / expressions / analysis
+	// ------------------------------------------------------------------
+
+	private JsonObject setIgnition(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "mountId"));
+		if (!(c instanceof MotorMount)) {
+			throw new ToolException(c.getName() + " is not a motor mount.");
+		}
+		MotorMount mount = (MotorMount) c;
+		String eventName = requireString(args, "event");
+		IgnitionEvent event;
+		try {
+			event = IgnitionEvent.valueOf(eventName.toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new ToolException("Unknown ignition event '" + eventName
+					+ "'. Options: AUTOMATIC, LAUNCH, EJECTION_CHARGE, BURNOUT, NEVER.");
+		}
+		final Double delay = (args.has("delay") && !args.get("delay").isJsonNull())
+				? args.get("delay").getAsDouble() : null;
+		onEdt(() -> {
+			FlightConfigurationId fcid = doc.getRocket().getSelectedConfiguration().getId();
+			MotorConfiguration mc = mount.getMotorConfig(fcid);
+			doc.addUndoPosition("Set ignition");
+			mc.setIgnitionEvent(event);
+			if (delay != null) {
+				mc.setIgnitionDelay(delay);
+			}
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("event", event.name());
+		return result;
+	}
+
+	private JsonObject setSeparation(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "stageId"));
+		if (!(c instanceof AxialStage)) {
+			throw new ToolException(c.getName() + " is not a stage (AxialStage).");
+		}
+		AxialStage stage = (AxialStage) c;
+		String eventName = requireString(args, "event");
+		StageSeparationConfiguration.SeparationEvent event;
+		try {
+			event = StageSeparationConfiguration.SeparationEvent.valueOf(eventName.toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new ToolException("Unknown separation event '" + eventName
+					+ "'. Options: LAUNCH, IGNITION, BURNOUT, EJECTION, UPPER_IGNITION, "
+					+ "ALTITUDE_ASCENDING, APOGEE, ALTITUDE_DESCENDING, NEVER.");
+		}
+		final Double delay = (args.has("delay") && !args.get("delay").isJsonNull())
+				? args.get("delay").getAsDouble() : null;
+		onEdt(() -> {
+			StageSeparationConfiguration sep = stage.getSeparationConfigurations().getDefault();
+			doc.addUndoPosition("Set stage separation");
+			sep.setSeparationEvent(event);
+			if (delay != null) {
+				sep.setSeparationDelay(delay);
+			}
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("event", event.name());
+		return result;
+	}
+
+	private JsonObject setAppearance(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		int r = requireInt(args, "red");
+		int g = requireInt(args, "green");
+		int b = requireInt(args, "blue");
+		int alpha = args.has("alpha") ? args.get("alpha").getAsInt() : 255;
+		double shine = args.has("shine") ? args.get("shine").getAsDouble() : 0.3;
+		final Appearance appearance = new Appearance(new ORColor(r, g, b, alpha), shine);
+		onEdt(() -> {
+			doc.addUndoPosition("Set appearance");
+			c.setAppearance(appearance);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("id", c.getID().toString());
+		result.addProperty("color", r + "," + g + "," + b);
+		return result;
+	}
+
+	private JsonObject setFinPoints(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		if (!(c instanceof FreeformFinSet)) {
+			throw new ToolException(c.getName() + " is not a FreeformFinSet. Add a FreeformFinSet "
+					+ "to edit an arbitrary fin profile.");
+		}
+		FreeformFinSet fin = (FreeformFinSet) c;
+		if (!args.has("points") || !args.get("points").isJsonArray()) {
+			throw new ToolException("Expected 'points' as an array of [x,y] pairs (metres), root to tip.");
+		}
+		JsonArray pts = args.getAsJsonArray("points");
+		if (pts.size() < 3) {
+			throw new ToolException("A fin needs at least 3 points.");
+		}
+		CoordinateIF[] coords = new CoordinateIF[pts.size()];
+		for (int i = 0; i < pts.size(); i++) {
+			JsonArray p = pts.get(i).getAsJsonArray();
+			coords[i] = new Coordinate(p.get(0).getAsDouble(), p.get(1).getAsDouble());
+		}
+		onEdt(() -> {
+			doc.addUndoPosition("Edit fin points");
+			fin.setPoints(coords);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("pointCount", coords.length);
+		return result;
+	}
+
+	private JsonObject addCustomExpression(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		String name = requireString(args, "name");
+		String symbol = requireString(args, "symbol");
+		String unit = optString(args, "unit", "");
+		String expression = requireString(args, "expression");
+		onEdt(() -> {
+			CustomExpression expr = new CustomExpression(doc, name, symbol, unit, expression);
+			doc.addCustomExpression(expr);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("name", name);
+		result.addProperty("symbol", symbol);
+		return result;
+	}
+
+	private JsonObject componentMassAnalysis(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		return onEdtCompute(() -> {
+			FlightConfiguration config = doc.getRocket().getSelectedConfiguration();
+			JsonArray arr = new JsonArray();
+			for (CMAnalysisEntry e : MassCalculator.getCMAnalysis(config).values()) {
+				JsonObject o = new JsonObject();
+				o.addProperty("name", e.name);
+				o.addProperty("massKg", e.eachMass);
+				o.addProperty("cg", e.totalCM == null ? Double.NaN : e.totalCM.getX());
+				arr.add(o);
+			}
+			JsonObject r = new JsonObject();
+			r.add("components", arr);
+			r.addProperty("note", "Per-component mass (kg) and CG (m from nose) for the selected configuration.");
+			return r;
+		});
+	}
+
+	// ------------------------------------------------------------------
 	// Flight configurations
 	// ------------------------------------------------------------------
 
@@ -900,31 +1078,66 @@ public class OpenRocketTools {
 		return result;
 	}
 
-	/** Export the active design to a RockSim (.rkt) or OpenRocket (.ork) file. */
+	/** Export the active design: rocksim (.rkt), openrocket (.ork), obj (3D print), svg (laser cut). */
 	private JsonObject exportDesign(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
 		String path = requireString(args, "path");
 		String fmt = optString(args, "format", "rocksim").toLowerCase();
 
-		StorageOptions opts = new StorageOptions();
 		String ext;
+		String reportFormat;
 		if (fmt.startsWith("rock") || fmt.equals("rkt")) {
-			opts.setFileType(StorageOptions.FileType.ROCKSIM);
 			ext = ".rkt";
+			reportFormat = "ROCKSIM";
 		} else if (fmt.startsWith("open") || fmt.equals("ork")) {
-			opts.setFileType(StorageOptions.FileType.OPENROCKET);
 			ext = ".ork";
+			reportFormat = "OPENROCKET";
+		} else if (fmt.equals("obj")) {
+			ext = ".obj";
+			reportFormat = "OBJ";
+		} else if (fmt.equals("svg")) {
+			ext = ".svg";
+			reportFormat = "SVG";
+		} else if (fmt.startsWith("ras")) {
+			ext = ".CDX1";
+			reportFormat = "RASAERO";
 		} else {
-			throw new ToolException("Unsupported format '" + fmt + "'. Use 'rocksim' or 'openrocket'.");
+			throw new ToolException("Unsupported format '" + fmt
+					+ "'. Use rocksim, openrocket, obj, svg or rasaero.");
 		}
 		File f = new File(path);
 		if (!f.getName().toLowerCase().endsWith(ext)) {
 			f = new File(f.getAbsolutePath() + ext);
 		}
-		new GeneralRocketSaver().save(f, doc, opts);
+
+		switch (reportFormat) {
+			case "OBJ": {
+				OBJExportOptions oo = new OBJExportOptions(doc.getRocket());
+				oo.setExportChildren(true);
+				new OBJExporterFactory(doc.getRocket().getChildren(),
+						doc.getRocket().getSelectedConfiguration(), f, oo, new WarningSet()).doExport();
+				break;
+			}
+			case "SVG": {
+				new SVGRocketPartsExporter().export(doc, f,
+						new SVGExportOptions(java.awt.Color.BLACK, 0.1));
+				break;
+			}
+			default: {
+				StorageOptions opts = new StorageOptions();
+				if (reportFormat.equals("ROCKSIM")) {
+					opts.setFileType(StorageOptions.FileType.ROCKSIM);
+				} else if (reportFormat.equals("RASAERO")) {
+					opts.setFileType(StorageOptions.FileType.RASAERO);
+				} else {
+					opts.setFileType(StorageOptions.FileType.OPENROCKET);
+				}
+				new GeneralRocketSaver().save(f, doc, opts);
+			}
+		}
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
-		result.addProperty("format", opts.getFileType().name());
+		result.addProperty("format", reportFormat);
 		result.addProperty("file", f.getAbsolutePath());
 		return result;
 	}
@@ -1508,8 +1721,30 @@ public class OpenRocketTools {
 				+ "stability) for a simulation. Optionally write a full-resolution CSV via csvPath.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"maxPoints\":{\"type\":\"integer\"},\"csvPath\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
 		tools.add(tool("export_design",
-				"Export the active design to another format. format is 'rocksim' (.rkt) or 'openrocket' (.ork).",
+				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
+				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",
 				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"format\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
+		tools.add(tool("set_ignition",
+				"Set a motor's ignition event/delay on a mount. event: AUTOMATIC, LAUNCH, "
+				+ "EJECTION_CHARGE, BURNOUT, NEVER. Use BURNOUT/EJECTION_CHARGE for upper-stage motors.",
+				"{\"type\":\"object\",\"properties\":{\"mountId\":{\"type\":\"string\"},\"event\":{\"type\":\"string\"},\"delay\":{\"type\":\"number\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"mountId\",\"event\"]}"));
+		tools.add(tool("set_separation",
+				"Set a stage's separation event/delay. event: LAUNCH, IGNITION, BURNOUT, EJECTION, "
+				+ "UPPER_IGNITION, ALTITUDE_ASCENDING, APOGEE, ALTITUDE_DESCENDING, NEVER.",
+				"{\"type\":\"object\",\"properties\":{\"stageId\":{\"type\":\"string\"},\"event\":{\"type\":\"string\"},\"delay\":{\"type\":\"number\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"stageId\",\"event\"]}"));
+		tools.add(tool("set_appearance",
+				"Set a component's appearance colour (red/green/blue 0-255, optional alpha 0-255, "
+				+ "optional shine 0-1).",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"red\":{\"type\":\"integer\"},\"green\":{\"type\":\"integer\"},\"blue\":{\"type\":\"integer\"},\"alpha\":{\"type\":\"integer\"},\"shine\":{\"type\":\"number\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"red\",\"green\",\"blue\"]}"));
+		tools.add(tool("set_fin_points",
+				"Set the profile of a FreeformFinSet from an array of [x,y] points (metres, root to tip).",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"points\":{\"type\":\"array\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"points\"]}"));
+		tools.add(tool("add_custom_expression",
+				"Add a custom flight-data expression (name, symbol, unit, expression) usable in plots/data.",
+				"{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"symbol\":{\"type\":\"string\"},\"unit\":{\"type\":\"string\"},\"expression\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"name\",\"symbol\",\"expression\"]}"));
+		tools.add(tool("component_mass_analysis",
+				"Per-component mass (kg) and CG (m) breakdown for the selected configuration.",
+				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));
 		tools.add(tool("set_simulation_options",
 				"Set launch conditions / options on a simulation. 'properties' maps option names to "
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"

@@ -16,6 +16,16 @@ java {
     modularity.inferModulePath = false
 }
 
+// Forward any -Dopenrocket.* system properties from the Gradle invocation to the run JVM.
+// Lets you do e.g. `./gradlew run -Dopenrocket.mcp.autostart=true` to expose the AI bridge.
+tasks.withType(JavaExec).configureEach {
+    System.properties.each { k, v ->
+        if (k.toString().startsWith('openrocket.')) {
+            systemProperty(k.toString(), v.toString())
+        }
+    }
+}
+
 application {
     mainModule = 'info.openrocket.swing'
     mainClass = 'info.openrocket.swing.startup.OpenRocket'

@@ -497,6 +497,13 @@ private static final Translator trans = Application.getTranslator();
 	}
 
 	/**
+	 * @return the document displayed by this frame (used by the AI/MCP bridge).
+	 */
+	public OpenRocketDocument getDocument() {
+		return document;
+	}
+
+	/**
 	 * Creates the menu for the window.
 	 */
 	private void createMenu() {
@@ -863,6 +870,19 @@ private static final Translator trans = Application.getTranslator();
 				log.info(Markers.USER_MARKER, "Photo... selected");
 				PhotoFrame pa = new PhotoFrame(document, BasicFrame.this);
 				pa.setVisible(true);
+			}
+		});
+		toolsMenu.add(item);
+
+		////	AI Copilot (MCP) bridge
+		item = new JMenuItem("AI Copilot (MCP bridge)…", KeyEvent.VK_A);
+		item.getAccessibleContext().setAccessibleDescription(
+				"Expose OpenRocket to AI agents (e.g. Claude Code) over a local MCP server");
+		item.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				log.info(Markers.USER_MARKER, "AI Copilot bridge selected");
+				info.openrocket.swing.mcp.AiBridgePanel.showPanel();
 			}
 		});
 		toolsMenu.add(item);

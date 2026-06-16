@@ -40,6 +40,8 @@ import info.openrocket.swing.logging.LoggingSystemSetup;
 import info.openrocket.swing.logging.PrintStreamToSLF4J;
 import info.openrocket.core.plugin.PluginModule;
 import info.openrocket.core.util.BuildProperties;
+import info.openrocket.swing.mcp.AiBridgePanel;
+import info.openrocket.swing.mcp.McpBridge;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -242,8 +244,15 @@ public class SwingStartup {
 				// Adopt it as the startup frame instead of opening a second one.
 				BasicFrame.setStartupFrame(BasicFrame.lastFrameInstance);
 			}
-			showWelcomeDialog();
+			// Skip the modal welcome dialog when the AI bridge auto-starts so an
+			// unattended agent session is not blocked waiting on a popup.
+			if (!Boolean.getBoolean("openrocket.mcp.autostart")) {
+				showWelcomeDialog();
+			}
 		}
+
+		// Optionally expose OpenRocket to AI agents over the MCP bridge.
+		maybeStartMcpBridge();
 		
 		// Check whether update info has been fetched or whether it needs more time
 		log.info("Checking update status");
@@ -265,6 +274,28 @@ public class SwingStartup {
 		JOptionPane.showMessageDialog(null, message, "Plugin migrated", JOptionPane.INFORMATION_MESSAGE);
 	}
 	
+	/**
+	 * Start the AI (MCP) bridge at launch when {@code -Dopenrocket.mcp.autostart=true} is set.
+	 * Port and token can be overridden with {@code openrocket.mcp.port} / {@code openrocket.mcp.token},
+	 * and {@code openrocket.mcp.panel=true} opens the live activity panel.
+	 */
+	private void maybeStartMcpBridge() {
+		if (!Boolean.getBoolean("openrocket.mcp.autostart")) {
+			return;
+		}
+		int port = Integer.getInteger("openrocket.mcp.port", McpBridge.DEFAULT_PORT);
+		String token = System.getProperty("openrocket.mcp.token");
+		try {
+			McpBridge.getInstance().start(port, token);
+			log.info("AI bridge auto-started on {}", McpBridge.getInstance().getUrl());
+		} catch (Exception e) {
+			log.error("Failed to auto-start AI bridge", e);
+		}
+		if (Boolean.getBoolean("openrocket.mcp.panel")) {
+			AiBridgePanel.showPanel();
+		}
+	}
+
 	/**
 	 * Check that the JRE is not running headless.
 	 */

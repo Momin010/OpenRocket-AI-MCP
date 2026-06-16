@@ -58,6 +58,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `set_component` | Set any parameter(s) of a component |
 | `delete_component` | Delete a component (and its children) |
 | `list_materials` / `set_material` | List materials and set a component's material by name |
+| `search_presets` / `apply_preset` | Find real commercial catalog parts and load them into a component |
 | `list_flight_configs` / `add_flight_config` / `select_flight_config` | Manage flight configurations |
 | `list_simulations` / `add_simulation` / `delete_simulation` | Manage simulations |
 | `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/descent/warnings (SI units) |

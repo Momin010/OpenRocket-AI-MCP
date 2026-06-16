@@ -25,6 +25,7 @@ import info.openrocket.core.masscalc.MassCalculator;
 import info.openrocket.core.material.Material;
 import info.openrocket.core.motor.MotorConfiguration;
 import info.openrocket.core.motor.ThrustCurveMotor;
+import info.openrocket.core.preset.ComponentPreset;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
 import info.openrocket.core.rocketcomponent.FlightConfigurationId;
 import info.openrocket.core.rocketcomponent.MotorMount;
@@ -84,6 +85,8 @@ public class OpenRocketTools {
 			case "delete_component":    return deleteComponent(args);
 			case "list_materials":      return listMaterials(args);
 			case "set_material":        return setMaterial(args);
+			case "search_presets":      return searchPresets(args);
+			case "apply_preset":        return applyPreset(args);
 			case "list_flight_configs": return listFlightConfigs(args);
 			case "add_flight_config":   return addFlightConfig(args);
 			case "select_flight_config":return selectFlightConfig(args);
@@ -531,6 +534,96 @@ public class OpenRocketTools {
 		result.addProperty("id", c.getID().toString());
 		result.addProperty("material", material.getName());
 		result.addProperty("type", type.name());
+		return result;
+	}
+
+	// ------------------------------------------------------------------
+	// Component presets (real catalog parts)
+	// ------------------------------------------------------------------
+
+	private JsonObject searchPresets(JsonObject args) throws ToolException {
+		String typeArg = optString(args, "type", null);
+		String manufacturer = optString(args, "manufacturer", "").toLowerCase();
+		String query = optString(args, "query", "").toLowerCase();
+		int limit = args.has("limit") ? args.get("limit").getAsInt() : 25;
+
+		List<ComponentPreset> presets;
+		if (typeArg != null) {
+			ComponentPreset.Type type;
+			try {
+				type = ComponentPreset.Type.valueOf(typeArg.toUpperCase());
+			} catch (IllegalArgumentException e) {
+				throw new ToolException("Unknown preset type '" + typeArg
+						+ "'. Examples: NOSE_CONE, BODY_TUBE, TRANSITION, TUBE_COUPLER, "
+						+ "CENTERING_RING, BULK_HEAD, ENGINE_BLOCK, LAUNCH_LUG, RAIL_BUTTON, PARACHUTE, STREAMER.");
+			}
+			presets = Application.getComponentPresetDao().listForType(type);
+		} else {
+			presets = Application.getComponentPresetDao().listAll();
+		}
+
+		JsonArray arr = new JsonArray();
+		for (ComponentPreset p : presets) {
+			String manu = p.getManufacturer().getDisplayName().toLowerCase();
+			String part = p.getPartNo() == null ? "" : p.getPartNo().toLowerCase();
+			if (!manufacturer.isEmpty() && !manu.contains(manufacturer)) {
+				continue;
+			}
+			if (!query.isEmpty() && !part.contains(query)) {
+				continue;
+			}
+			JsonObject o = new JsonObject();
+			o.addProperty("manufacturer", p.getManufacturer().getDisplayName());
+			o.addProperty("partNo", p.getPartNo());
+			o.addProperty("type", p.getType().name());
+			arr.add(o);
+			if (arr.size() >= limit) {
+				break;
+			}
+		}
+		JsonObject result = new JsonObject();
+		result.add("presets", arr);
+		result.addProperty("count", arr.size());
+		return result;
+	}
+
+	private JsonObject applyPreset(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		String partNo = requireString(args, "partNo");
+		String manufacturer = optString(args, "manufacturer", null);
+
+		ComponentPreset.Type type = c.getPresetType();
+		if (type == null) {
+			throw new ToolException(c.getClass().getSimpleName() + " does not support catalog presets.");
+		}
+		ComponentPreset chosen = null;
+		for (ComponentPreset p : Application.getComponentPresetDao().listForType(type)) {
+			if (!partNo.equalsIgnoreCase(p.getPartNo())) {
+				continue;
+			}
+			if (manufacturer != null
+					&& !p.getManufacturer().getDisplayName().toLowerCase().contains(manufacturer.toLowerCase())) {
+				continue;
+			}
+			chosen = p;
+			break;
+		}
+		if (chosen == null) {
+			throw new ToolException("No " + type + " preset with partNo '" + partNo
+					+ "'. Use search_presets with type=" + type + ".");
+		}
+		final ComponentPreset preset = chosen;
+		onEdt(() -> {
+			doc.addUndoPosition("Apply preset");
+			c.loadPreset(preset);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("id", c.getID().toString());
+		result.addProperty("partNo", preset.getPartNo());
+		result.addProperty("manufacturer", preset.getManufacturer().getDisplayName());
 		return result;
 	}
 
@@ -1227,6 +1320,14 @@ public class OpenRocketTools {
 				"Set a component's material by name (matched to the component's material type). "
 				+ "See list_materials for valid names.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"material\"]}"));
+		tools.add(tool("search_presets",
+				"Search the catalog of real commercial component presets (Estes/LOC/etc). Filter by "
+				+ "type (e.g. NOSE_CONE, BODY_TUBE), manufacturer, and/or partNo query.",
+				"{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"},\"manufacturer\":{\"type\":\"string\"},\"query\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("apply_preset",
+				"Apply a catalog preset (by partNo, optionally manufacturer) to a component, loading its "
+				+ "real dimensions/material. The component must match the preset type.",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"partNo\":{\"type\":\"string\"},\"manufacturer\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"partNo\"]}"));
 		tools.add(tool("list_flight_configs",
 				"List the flight configurations of the active design (id, name, which is selected).",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));

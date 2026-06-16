@@ -10,6 +10,8 @@ import com.google.gson.JsonPrimitive;
 import info.openrocket.core.aerodynamics.AerodynamicCalculator;
 import info.openrocket.core.aerodynamics.BarrowmanCalculator;
 import info.openrocket.core.aerodynamics.FlightConditions;
+import info.openrocket.core.database.Database;
+import info.openrocket.core.database.Databases;
 import info.openrocket.core.database.motor.ThrustCurveMotorSet;
 import info.openrocket.core.database.motor.ThrustCurveMotorSetDatabase;
 import info.openrocket.core.document.OpenRocketDocument;
@@ -20,6 +22,7 @@ import info.openrocket.core.file.GeneralRocketSaver;
 import info.openrocket.core.logging.Warning;
 import info.openrocket.core.logging.WarningSet;
 import info.openrocket.core.masscalc.MassCalculator;
+import info.openrocket.core.material.Material;
 import info.openrocket.core.motor.MotorConfiguration;
 import info.openrocket.core.motor.ThrustCurveMotor;
 import info.openrocket.core.rocketcomponent.FlightConfiguration;
@@ -79,6 +82,8 @@ public class OpenRocketTools {
 			case "add_component":       return addComponent(args);
 			case "set_component":       return setComponent(args);
 			case "delete_component":    return deleteComponent(args);
+			case "list_materials":      return listMaterials(args);
+			case "set_material":        return setMaterial(args);
 			case "list_flight_configs": return listFlightConfigs(args);
 			case "add_flight_config":   return addFlightConfig(args);
 			case "select_flight_config":return selectFlightConfig(args);
@@ -445,6 +450,86 @@ public class OpenRocketTools {
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
 		result.addProperty("deletedId", c.getID().toString());
+		return result;
+	}
+
+	// ------------------------------------------------------------------
+	// Materials
+	// ------------------------------------------------------------------
+
+	private static Database<Material> materialDb(Material.Type type) {
+		switch (type) {
+			case SURFACE: return Databases.SURFACE_MATERIAL;
+			case LINE:    return Databases.LINE_MATERIAL;
+			default:      return Databases.BULK_MATERIAL;
+		}
+	}
+
+	private JsonObject listMaterials(JsonObject args) {
+		String typeArg = optString(args, "type", null);
+		JsonArray arr = new JsonArray();
+		for (Material.Type type : Material.Type.values()) {
+			if (type == Material.Type.CUSTOM) {
+				continue;
+			}
+			if (typeArg != null && !type.name().equalsIgnoreCase(typeArg)) {
+				continue;
+			}
+			for (Material m : materialDb(type)) {
+				JsonObject o = new JsonObject();
+				o.addProperty("name", m.getName());
+				o.addProperty("type", type.name());
+				o.addProperty("density", m.getDensity());
+				arr.add(o);
+			}
+		}
+		JsonObject result = new JsonObject();
+		result.add("materials", arr);
+		result.addProperty("note", "BULK density is kg/m^3, SURFACE kg/m^2, LINE kg/m. "
+				+ "Use set_material with one of these names (matched to the component's material type).");
+		return result;
+	}
+
+	private JsonObject setMaterial(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		RocketComponent c = findComponent(doc, requireString(args, "id"));
+		String name = requireString(args, "material");
+
+		Method getM;
+		Method setM;
+		try {
+			getM = c.getClass().getMethod("getMaterial");
+			setM = c.getClass().getMethod("setMaterial", Material.class);
+		} catch (NoSuchMethodException e) {
+			throw new ToolException(c.getClass().getSimpleName()
+					+ " has no settable material. (Tip: set mass directly with set_component "
+					+ "using massOverridden=true and overrideMass.)");
+		}
+
+		Material current = (Material) getM.invoke(c);
+		Material.Type type = current.getType();
+		Material chosen = null;
+		for (Material m : materialDb(type)) {
+			if (m.getName().equalsIgnoreCase(name)) {
+				chosen = m;
+				break;
+			}
+		}
+		if (chosen == null) {
+			throw new ToolException("No " + type + " material named '" + name
+					+ "'. Use list_materials with type=" + type + " to see valid names.");
+		}
+		final Material material = chosen;
+		onEdt(() -> {
+			doc.addUndoPosition("Set material");
+			setM.invoke(c, material);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("id", c.getID().toString());
+		result.addProperty("material", material.getName());
+		result.addProperty("type", type.name());
 		return result;
 	}
 
@@ -1005,6 +1090,13 @@ public class OpenRocketTools {
 		tools.add(tool("delete_component",
 				"Delete a component (and its children) by id.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
+		tools.add(tool("list_materials",
+				"List available materials (name, type, density). Optionally filter by type (BULK/SURFACE/LINE).",
+				"{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"}}}"));
+		tools.add(tool("set_material",
+				"Set a component's material by name (matched to the component's material type). "
+				+ "See list_materials for valid names.",
+				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\",\"material\"]}"));
 		tools.add(tool("list_flight_configs",
 				"List the flight configurations of the active design (id, name, which is selected).",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"}}}"));

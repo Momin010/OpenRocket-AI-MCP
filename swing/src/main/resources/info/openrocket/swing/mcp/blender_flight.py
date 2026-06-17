@@ -261,13 +261,15 @@ tt.track_axis = "TRACK_NEGATIVE_Z"; tt.up_axis = "UP_Y"
 
 # ---- animate per frame ----
 R = cfg["rocket"]; C = cfg["cameras"]
+empty.rotation_mode = "QUATERNION"
 for f in range(cfg["totalFrames"]):
     fr = f + 1
-    x, y, z, tilt = R[f]
+    x, y, z, dx, dy, dz = R[f]
     empty.location = (x, y, z)
-    empty.rotation_euler = (0, math.radians(-tilt), 0)
+    # Point the rocket's long axis (+Z) along the real nose-direction vector from the 6-DOF sim.
+    empty.rotation_quaternion = mathutils.Vector((dx, dy, dz)).to_track_quat("Z", "Y")
     empty.keyframe_insert("location", frame=fr)
-    empty.keyframe_insert("rotation_euler", frame=fr)
+    empty.keyframe_insert("rotation_quaternion", frame=fr)
     cx2, cy2, cz2 = C[f]
     cam.location = (cx2, cy2, cz2)
     cam.keyframe_insert("location", frame=fr)

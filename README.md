@@ -25,6 +25,13 @@ It's the same OpenRocket you know (same GPLv3 license, same engine), plus a port
 - **`save_screenshot`** — the AI captures the design view (2D schematic or 3D) as a PNG at each
   iteration stage.
 - **`animate_flight`** — watch the rocket fly its simulated trajectory from launch to landing.
+- **`render_flight_video`** — photoreal 3D launch rendered in **Blender**, driven by the *real
+  6-DOF simulation*: the model flies at OpenRocket's actual attitude, follows the true ground track
+  (downrange **and** lateral wind drift), and its exhaust flame scales with the real thrust curve.
+  Pick a scene (day/sunset/space/forest/winter/desert) and quality (up to 4K), drop in your own
+  `.blend` environment, choose a camera (including a broadside `profile` view where screen tilt =
+  true pitch), or open it **live in Blender** to orbit/zoom/scrub. `apply_environment` matches the
+  launch physics to a real place (e.g. Finnish winter wind & cold).
 - **`/goal` autonomous designer** — give a spec, the AI builds a complete, stable, flyable rocket
   end-to-end (see [`docs/goal-command.md`](docs/goal-command.md)).
 

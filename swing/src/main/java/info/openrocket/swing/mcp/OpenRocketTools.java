@@ -1219,6 +1219,13 @@ public class OpenRocketTools {
 		FLIGHT_TYPES.put("acceleration", FlightDataType.TYPE_ACCELERATION_TOTAL);
 		FLIGHT_TYPES.put("mach", FlightDataType.TYPE_MACH_NUMBER);
 		FLIGHT_TYPES.put("stability", FlightDataType.TYPE_STABILITY);
+		FLIGHT_TYPES.put("thrust", FlightDataType.TYPE_THRUST_FORCE);
+		FLIGHT_TYPES.put("mass", FlightDataType.TYPE_MASS);
+		// Real 6-DOF attitude + ground-track (radians / metres) — drives the 3D flight render.
+		FLIGHT_TYPES.put("orientationTheta", FlightDataType.TYPE_ORIENTATION_THETA);
+		FLIGHT_TYPES.put("orientationPhi", FlightDataType.TYPE_ORIENTATION_PHI);
+		FLIGHT_TYPES.put("positionX", FlightDataType.TYPE_POSITION_X);
+		FLIGHT_TYPES.put("positionY", FlightDataType.TYPE_POSITION_Y);
 	}
 
 	/** Return downsampled flight-time series (and optionally write a full-resolution CSV). */
@@ -1365,7 +1372,11 @@ public class OpenRocketTools {
 		final double[] tt = orZeros(series(branch, FlightDataType.TYPE_TIME, len), len);
 		final double[] alt = orZeros(series(branch, FlightDataType.TYPE_ALTITUDE, len), len);
 		final double[] range = orZeros(series(branch, FlightDataType.TYPE_POSITION_X, len), len);
-		final double[] pitch = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
+		// Real 6-DOF attitude, lateral drift and thrust straight from the sim (null if not recorded).
+		final double[] lateral = series(branch, FlightDataType.TYPE_POSITION_Y, len);
+		final double[] theta = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
+		final double[] phi = series(branch, FlightDataType.TYPE_ORIENTATION_PHI, len);
+		final double[] thrust = series(branch, FlightDataType.TYPE_THRUST_FORCE, len);
 		final double[] vel = orZeros(series(branch, FlightDataType.TYPE_VELOCITY_TOTAL, len), len);
 		double[] dims = onEdtCompute(() -> {
 			FlightConfiguration cfg = doc.getRocket().getSelectedConfiguration();
@@ -1394,8 +1405,8 @@ public class OpenRocketTools {
 			throw new ToolException("Custom .blend scenes need Blender installed.");
 		}
 		if (blender != null) {
-			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0], dims[1],
-					out, w, h, fps, seconds, sceneStr, fixedCam, interactive, sceneFile);
+			int frames = renderViaBlender(blender, doc, tt, alt, range, lateral, theta, phi, thrust, vel,
+					dims[0], dims[1], out, w, h, fps, seconds, sceneStr, fixedCam, interactive, sceneFile);
 			result.addProperty("renderer", "blender");
 			result.addProperty("frames", frames);
 			if (fixedCam != null && !fixedCam.isBlank()) {
@@ -1420,7 +1431,7 @@ public class OpenRocketTools {
 				scene = FlightVideoRenderer.Scene.DAY;
 			}
 			File poster = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + "-poster.png");
-			FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, pitch, vel,
+			FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, theta, vel,
 					dims[0], dims[1], dims[2], w, h, fps, seconds, scene);
 			int frames = r.render(out, poster, ffmpeg);
 			result.addProperty("renderer", "software");
@@ -1439,7 +1450,8 @@ public class OpenRocketTools {
 
 	/** Render the real rocket model flying its trajectory via headless Blender (Eevee -> H.264). */
 	private int renderViaBlender(String blender, OpenRocketDocument doc, double[] tt, double[] alt,
-			double[] range, double[] pitch, double[] vel, double length, double bodyRadius, File out,
+			double[] range, double[] lateral, double[] theta, double[] phi, double[] thrust, double[] vel,
+			double length, double bodyRadius, File out,
 			int w, int h, int fps, double seconds, String sceneStr, String fixedCam, boolean interactive,
 			String sceneFile) throws Exception {
 		int n = tt.length;
@@ -1461,6 +1473,17 @@ public class OpenRocketTools {
 		int totalFrames = Math.max(2, (int) Math.round(fps * seconds));
 		double rocketLen = Math.max(0.1, length);
 
+		// Real-data availability — fall back to geometry only where the sim recorded no series.
+		boolean haveAttitude = theta != null && phi != null;
+		boolean haveLateral = lateral != null;
+		boolean haveThrust = thrust != null;
+		double maxThrust = 0;
+		if (haveThrust) {
+			for (double t : thrust) {
+				maxThrust = Math.max(maxThrust, t);
+			}
+		}
+
 		JsonArray rocketArr = new JsonArray();
 		JsonArray camArr = new JsonArray();
 		JsonArray flameArr = new JsonArray();
@@ -1469,25 +1492,38 @@ public class OpenRocketTools {
 		for (int f = 0; f < totalFrames; f++) {
 			double u = (double) f / (totalFrames - 1);
 			double ft = videoWarp(u, apogeeTime, flightTime);
-			double rx = sampleAt(tt, range, ft);
-			double rz = sampleAt(tt, alt, ft);
+			double rx = sampleAt(tt, range, ft);                       // downrange (POSITION_X)
+			double ry = haveLateral ? sampleAt(tt, lateral, ft) : 0.0; // real lateral drift (POSITION_Y)
+			double rz = sampleAt(tt, alt, ft);                         // altitude
 			double vv = sampleAt(tt, vel, ft);
 			boolean deployed = ft > apogeeTime * 1.05 && rz > 0.5 && vv < 0.6 * mv;
-			double tilt;
+
+			// Nose-pointing unit vector in the world frame (X=downrange, Y=lateral, Z=up).
+			double dx, dy, dz;
 			if (deployed) {
-				tilt = 0.0;   // rocket hangs upright under the parachute
+				dx = 0.0; dy = 0.0; dz = 1.0;   // hangs upright under the parachute
+			} else if (haveAttitude) {
+				// Real 6-DOF attitude: theta = elevation above horizontal (rad), phi = azimuth (0 = +Y).
+				double th = sampleAt(tt, theta, ft);
+				double ph = sampleAt(tt, phi, ft);
+				double cz = Math.cos(th);
+				dx = cz * Math.sin(ph);
+				dy = cz * Math.cos(ph);
+				dz = Math.sin(th);
 			} else {
-				// Tilt from the trajectory slope (vertical at liftoff, leaning as it arcs over) —
-				// convention-independent, unlike ORIENTATION_THETA.
+				// Fallback (no attitude recorded): lean from the trajectory slope, downrange plane only.
 				double dr = sampleAt(tt, range, ft + 0.1) - sampleAt(tt, range, ft - 0.1);
 				double da = sampleAt(tt, alt, ft + 0.1) - sampleAt(tt, alt, ft - 0.1);
-				tilt = Math.toDegrees(Math.atan2(dr, da));
+				double tilt = Math.atan2(dr, da);
+				dx = Math.sin(tilt); dy = 0.0; dz = Math.cos(tilt);
 			}
 			JsonArray rp = new JsonArray();
 			rp.add(rx);
-			rp.add(0.0);
+			rp.add(ry);
 			rp.add(rz);
-			rp.add(tilt);
+			rp.add(dx);
+			rp.add(dy);
+			rp.add(dz);
 			rocketArr.add(rp);
 
 			double[] cam = cameraPos(ft, rx, rz, rocketLen, apogeeTime, flightTime, fixedCam);
@@ -1498,10 +1534,18 @@ public class OpenRocketTools {
 			camArr.add(cp);
 
 			// distance-based zoom so the rocket stays well framed (telephoto when far)
-			double dist = Math.sqrt(Math.pow(rx - cam[0], 2) + Math.pow(cam[1], 2) + Math.pow(rz - cam[2], 2));
+			double dist = Math.sqrt(Math.pow(rx - cam[0], 2) + Math.pow(ry - cam[1], 2)
+					+ Math.pow(rz - cam[2], 2));
 			lensArr.add(Math.max(28.0, Math.min(300.0, 4.0 * dist)));
 
-			double flame = (ft <= burnout && ft < apogeeTime) ? (0.85 + 0.15 * Math.sin(f * 1.7)) : 0.0;
+			// Flame size tracks the real thrust curve; faint flicker only for life.
+			double flame;
+			if (haveThrust && maxThrust > 0) {
+				double thr = Math.max(0, sampleAt(tt, thrust, ft));
+				flame = (thr / maxThrust) * (0.92 + 0.08 * Math.sin(f * 1.7));
+			} else {
+				flame = (ft <= burnout && ft < apogeeTime) ? (0.85 + 0.15 * Math.sin(f * 1.7)) : 0.0;
+			}
 			flameArr.add(flame);
 			chuteArr.add(deployed ? 1.0 : 0.0);
 		}
@@ -1594,6 +1638,8 @@ public class OpenRocketTools {
 				case "ground":   return new double[]{16, -18, 2};
 				case "chase":    return new double[]{rx - back, -back, rz + Math.max(1, len * 3)};
 				case "tracking": return new double[]{45, 24, 3};
+				case "profile":  // broadside, perpendicular to the flight plane: screen tilt = true pitch
+					return new double[]{rx, -Math.max(40, len * 20 + rz), Math.max(2, rz)};
 				case "orbit": {
 					double a = ft * 1.3;
 					double r = Math.max(4, len * 8);

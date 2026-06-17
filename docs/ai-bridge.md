@@ -52,7 +52,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `save_screenshot` | Save a PNG of the design view (2D schematic side/back/top, or 3D) |
 | `animate_flight` | Open an animated 2D playback of the rocket flying its trajectory |
-| `render_flight_video` | Photoreal 3D launch via Blender (real rocket model, launch pad, trees/hills, parachute, exhaust, auto-zoom). `scene`: day/sunset/space/forest/winter/desert; `quality`: hd/fullhd/2k/4k; `sceneFile`: your own `.blend` environment (rocket spawns at origin); `camera` for a single-angle clip; `interactive:true` to **open it live in Blender** (orbit/zoom/scrub) |
+| `render_flight_video` | Photoreal 3D launch via Blender driven by the **real 6-DOF simulation** — the model's attitude is OpenRocket's actual orientation (θ zenith, φ azimuth), it tracks the real ground path (downrange *and* lateral wind drift), and the exhaust flame scales with the real thrust curve. `scene`: day/sunset/space/forest/winter/desert; `quality`: hd/fullhd/2k/4k; `sceneFile`: your own `.blend` environment (rocket spawns at origin); `camera`: ground/chase/tracking/orbit/onboard/recovery/**profile** (profile = broadside, screen tilt = true pitch) for a single-angle clip; `interactive:true` to **open it live in Blender** (orbit/zoom/scrub) |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
 | `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |
@@ -66,7 +66,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `list_flight_configs` / `add_flight_config` / `select_flight_config` | Manage flight configurations |
 | `list_simulations` / `add_simulation` / `delete_simulation` | Manage simulations |
 | `run_simulation` / `get_simulation_results` | Run a flight, read apogee/velocity/descent/warnings (SI units) |
-| `get_flight_data` | Downsampled flight time-series (+ optional CSV export) |
+| `get_flight_data` | Downsampled flight time-series (+ optional CSV export): time, altitude, velocity, acceleration, mach, stability, thrust, mass, orientationTheta/Phi (real attitude, radians), positionX/Y (ground track, m) |
 | `export_design` | Export to RockSim (.rkt), OpenRocket (.ork), OBJ (3D print), SVG (laser cut), RASAERO (.CDX1) |
 | `set_ignition` / `set_separation` | Motor ignition event/delay and stage separation event/delay |
 | `set_appearance` | Set a component's colour / shine |

@@ -34,8 +34,15 @@ The tools then appear as `mcp__openrocket__*`. Confirm with `list_open_designs`.
 - **Motors & staging:** `search_motors`, `set_motor`, `set_ignition`, `set_separation`,
   `set_deployment`.
 - **Simulation:** `list/add/delete_simulation`, `run_simulation`, `get_simulation_results`,
-  `get_flight_data` (+CSV), `set_simulation_options`, `add_simulation_extension`,
-  `animate_flight` (watch it fly).
+  `get_flight_data` (+CSV — time, altitude, velocity, acceleration, mach, stability, thrust, mass,
+  real attitude `orientationTheta`/`orientationPhi`, ground track `positionX`/`positionY`),
+  `set_simulation_options`, `apply_environment` (real-world launch physics by place:
+  finland_summer/finland_winter/desert/high_altitude/coastal/calm), `add_simulation_extension`.
+- **Visualisation:** `animate_flight` (2D playback); `render_flight_video` — photoreal 3D launch
+  via Blender driven by the **real 6-DOF sim** (actual attitude, lateral wind drift, thrust-scaled
+  flame). Args: `scene` day/sunset/space/forest/winter/desert, `quality` hd/fullhd/2k/4k,
+  `sceneFile` (your own `.blend` environment), `camera`
+  ground/chase/tracking/orbit/onboard/recovery/profile, `interactive:true` (open live in Blender).
 - **Flight configs:** `list/add/select_flight_config`.
 - **Optimisation:** `optimize_parameter` (max/target apogee, target stability).
 - **Custom:** `add_custom_expression`.
@@ -54,7 +61,17 @@ The tools then appear as `mcp__openrocket__*`. Confirm with `list_open_designs`.
    - Size the parachute (`set_component` diameter) to a safe `groundHitVelocity` (~3–6 m/s).
    - Resolve every entry in the sim `warnings`.
 5. `save_screenshot` at each milestone and reference the images for the user.
-6. `animate_flight` to show the flight; `save_file` / `export_design` to finish.
+6. `animate_flight` or `render_flight_video` to show the flight; `save_file` / `export_design` to finish.
+
+## Real-data 3D render (production-grade)
+
+`render_flight_video` is fed entirely from the simulation: the model's orientation each frame is
+OpenRocket's actual flight attitude (θ = elevation above horizontal, φ = azimuth), it follows the
+real downrange **and** lateral ground track (so wind drift shows in true 3D), and the exhaust flame
+scales with the real thrust curve (gone at burnout). Use `camera:"profile"` for a broadside view
+where on-screen tilt equals true pitch — handy when the audience wants to read the pitch program.
+What's real: trajectory, attitude, ground track, thrust-driven flame size, environment physics.
+What's a visual prop: flame glow, parachute mesh, scenery; descent under chute is shown upright.
 
 ## Tips
 

@@ -1367,13 +1367,17 @@ public class OpenRocketTools {
 		});
 		String name = sim.getName();
 
+		String fixedCam = optString(args, "camera", null);
 		JsonObject result = new JsonObject();
 		String blender = findBlender();
 		if (blender != null) {
-			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0],
-					out, w, h, fps, seconds, sceneStr);
+			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0], dims[1],
+					out, w, h, fps, seconds, sceneStr, fixedCam);
 			result.addProperty("renderer", "blender");
 			result.addProperty("frames", frames);
+			if (fixedCam != null && !fixedCam.isBlank()) {
+				result.addProperty("camera", fixedCam);
+			}
 		} else {
 			String ffmpeg = findFfmpeg();
 			if (ffmpeg == null) {
@@ -1400,8 +1404,8 @@ public class OpenRocketTools {
 
 	/** Render the real rocket model flying its trajectory via headless Blender (Eevee -> H.264). */
 	private int renderViaBlender(String blender, OpenRocketDocument doc, double[] tt, double[] alt,
-			double[] range, double[] pitch, double[] vel, double length, File out, int w, int h,
-			int fps, double seconds, String sceneStr) throws Exception {
+			double[] range, double[] pitch, double[] vel, double length, double bodyRadius, File out,
+			int w, int h, int fps, double seconds, String sceneStr, String fixedCam) throws Exception {
 		int n = tt.length;
 		double flightTime = tt[n - 1];
 		double apogeeTime = tt[0];
@@ -1424,16 +1428,24 @@ public class OpenRocketTools {
 		JsonArray rocketArr = new JsonArray();
 		JsonArray camArr = new JsonArray();
 		JsonArray flameArr = new JsonArray();
+		JsonArray chuteArr = new JsonArray();
 		for (int f = 0; f < totalFrames; f++) {
 			double u = (double) f / (totalFrames - 1);
 			double ft = videoWarp(u, apogeeTime, flightTime);
 			double rx = sampleAt(tt, range, ft);
 			double rz = sampleAt(tt, alt, ft);
-			// Tilt from the trajectory slope (vertical at liftoff, leaning as it arcs over) — this
-			// is convention-independent, unlike ORIENTATION_THETA.
-			double dr = sampleAt(tt, range, ft + 0.1) - sampleAt(tt, range, ft - 0.1);
-			double da = sampleAt(tt, alt, ft + 0.1) - sampleAt(tt, alt, ft - 0.1);
-			double tilt = Math.toDegrees(Math.atan2(dr, da));
+			double vv = sampleAt(tt, vel, ft);
+			boolean deployed = ft > apogeeTime * 1.05 && rz > 0.5 && vv < 0.6 * mv;
+			double tilt;
+			if (deployed) {
+				tilt = 0.0;   // rocket hangs upright under the parachute
+			} else {
+				// Tilt from the trajectory slope (vertical at liftoff, leaning as it arcs over) —
+				// convention-independent, unlike ORIENTATION_THETA.
+				double dr = sampleAt(tt, range, ft + 0.1) - sampleAt(tt, range, ft - 0.1);
+				double da = sampleAt(tt, alt, ft + 0.1) - sampleAt(tt, alt, ft - 0.1);
+				tilt = Math.toDegrees(Math.atan2(dr, da));
+			}
 			JsonArray rp = new JsonArray();
 			rp.add(rx);
 			rp.add(0.0);
@@ -1441,7 +1453,7 @@ public class OpenRocketTools {
 			rp.add(tilt);
 			rocketArr.add(rp);
 
-			double[] cam = cameraPos(ft, rx, rz, rocketLen, apogeeTime, flightTime);
+			double[] cam = cameraPos(ft, rx, rz, rocketLen, apogeeTime, flightTime, fixedCam);
 			JsonArray cp = new JsonArray();
 			cp.add(cam[0]);
 			cp.add(cam[1]);
@@ -1450,6 +1462,7 @@ public class OpenRocketTools {
 
 			double flame = (ft <= burnout && ft < apogeeTime) ? (0.85 + 0.15 * Math.sin(f * 1.7)) : 0.0;
 			flameArr.add(flame);
+			chuteArr.add(deployed ? 1.0 : 0.0);
 		}
 
 		File obj = File.createTempFile("orrocket", ".obj");
@@ -1465,9 +1478,12 @@ public class OpenRocketTools {
 		cfg.addProperty("scene", sceneStr);
 		cfg.addProperty("rocketScale", 3.0);
 		cfg.addProperty("lens", 38);
+		cfg.addProperty("bodyRadius", bodyRadius);
+		cfg.addProperty("length", rocketLen);
 		cfg.add("rocket", rocketArr);
 		cfg.add("cameras", camArr);
 		cfg.add("flame", flameArr);
+		cfg.add("chute", chuteArr);
 
 		File cfgFile = File.createTempFile("orflight", ".json");
 		java.nio.file.Files.writeString(cfgFile.toPath(), new com.google.gson.Gson().toJson(cfg));
@@ -1508,8 +1524,23 @@ public class OpenRocketTools {
 
 	/** Camera world position (Blender coords X=downrange, Y=lateral, Z=alt) per flight phase. */
 	private static double[] cameraPos(double ft, double rx, double rz, double len,
-			double apogeeTime, double flightTime) {
+			double apogeeTime, double flightTime, String fixedCam) {
 		double back = Math.max(3, len * 6);
+		if (fixedCam != null && !fixedCam.isBlank() && !fixedCam.equalsIgnoreCase("auto")) {
+			switch (fixedCam.toLowerCase()) {
+				case "ground":   return new double[]{16, -18, 2};
+				case "chase":    return new double[]{rx - back, -back, rz + Math.max(1, len * 3)};
+				case "tracking": return new double[]{45, 24, 3};
+				case "orbit": {
+					double a = ft * 1.3;
+					double r = Math.max(4, len * 8);
+					return new double[]{rx + r * Math.cos(a), r * Math.sin(a), rz + 2};
+				}
+				case "onboard":  return new double[]{rx + len * 1.6, -len, rz + len * 0.3};
+				case "recovery": return new double[]{12, -12, 2};
+				default: break;
+			}
+		}
 		if (ft < 0.9) {
 			return new double[]{16, -18, 2};
 		} else if (ft < Math.max(2.2, apogeeTime * 0.35)) {
@@ -2307,11 +2338,12 @@ public class OpenRocketTools {
 				+ "(downrange x altitude) from launch to landing, with boost flame and parachute.",
 				"{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
 		tools.add(tool("render_flight_video",
-				"Render a cinematic MP4 of the rocket flying its simulated trajectory in 3D, with "
-				+ "multiple auto-tracking cameras (ground/chase/orbit/onboard/recovery) that cut "
-				+ "through the launch. scene: day/sunset/space. Args: path, scene, seconds, fps, "
-				+ "width, height. Requires ffmpeg installed.",
-				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
+				"Render a cinematic MP4 of the rocket flying its trajectory in a photoreal 3D world "
+				+ "(real rocket model via Blender if installed). By default multiple auto-tracking "
+				+ "cameras cut through the launch; set 'camera' to lock ONE angle for the whole clip "
+				+ "(ground/chase/tracking/orbit/onboard/recovery) so you can render several single-"
+				+ "angle clips and edit them yourself. scene: day/sunset/space.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"camera\":{\"type\":\"string\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("export_design",
 				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
 				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",

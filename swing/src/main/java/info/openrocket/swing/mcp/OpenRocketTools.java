@@ -1311,7 +1311,10 @@ public class OpenRocketTools {
 		return result;
 	}
 
-	/** Render a cinematic multi-camera MP4 of the flight (3D software renderer + ffmpeg). */
+	/**
+	 * Render a cinematic multi-camera MP4 of the flight. Prefers Blender (the real rocket model in
+	 * a photoreal 3D world); falls back to the built-in software renderer if Blender is absent.
+	 */
 	private JsonObject renderFlightVideo(JsonObject args) throws Exception {
 		OpenRocketDocument doc = activeFrame(args).getDocument();
 		Simulation sim = resolveSimulation(doc, args);
@@ -1329,12 +1332,6 @@ public class OpenRocketTools {
 			throw new ToolException("Flight is too short to render.");
 		}
 
-		String ffmpeg = findFfmpeg();
-		if (ffmpeg == null) {
-			throw new ToolException("ffmpeg was not found. Install it (e.g. `brew install ffmpeg`) "
-					+ "so the video can be encoded.");
-		}
-
 		String path = requireString(args, "path");
 		if (!path.toLowerCase().endsWith(".mp4")) {
 			path = path + ".mp4";
@@ -1342,21 +1339,18 @@ public class OpenRocketTools {
 		final File out = new File(path);
 		int w = args.has("width") ? args.get("width").getAsInt() : 1280;
 		int h = args.has("height") ? args.get("height").getAsInt() : 720;
-		int fps = args.has("fps") ? args.get("fps").getAsInt() : 30;
-		double seconds = args.has("seconds") ? args.get("seconds").getAsDouble() : 20;
-		FlightVideoRenderer.Scene scene;
-		try {
-			scene = FlightVideoRenderer.Scene.valueOf(optString(args, "scene", "day").toUpperCase());
-		} catch (IllegalArgumentException e) {
+		int fps = args.has("fps") ? args.get("fps").getAsInt() : 24;
+		double seconds = args.has("seconds") ? args.get("seconds").getAsDouble() : 14;
+		String sceneStr = optString(args, "scene", "day").toLowerCase();
+		if (!sceneStr.equals("day") && !sceneStr.equals("sunset") && !sceneStr.equals("space")) {
 			throw new ToolException("Unknown scene. Options: day, sunset, space.");
 		}
 
-		double[] tt = orZeros(series(branch, FlightDataType.TYPE_TIME, len), len);
-		double[] alt = orZeros(series(branch, FlightDataType.TYPE_ALTITUDE, len), len);
-		double[] range = orZeros(series(branch, FlightDataType.TYPE_POSITION_X, len), len);
-		double[] pitch = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
-		double[] vel = orZeros(series(branch, FlightDataType.TYPE_VELOCITY_TOTAL, len), len);
-
+		final double[] tt = orZeros(series(branch, FlightDataType.TYPE_TIME, len), len);
+		final double[] alt = orZeros(series(branch, FlightDataType.TYPE_ALTITUDE, len), len);
+		final double[] range = orZeros(series(branch, FlightDataType.TYPE_POSITION_X, len), len);
+		final double[] pitch = series(branch, FlightDataType.TYPE_ORIENTATION_THETA, len);
+		final double[] vel = orZeros(series(branch, FlightDataType.TYPE_VELOCITY_TOTAL, len), len);
 		double[] dims = onEdtCompute(() -> {
 			FlightConfiguration cfg = doc.getRocket().getSelectedConfiguration();
 			double rad = 0;
@@ -1371,22 +1365,211 @@ public class OpenRocketTools {
 			}
 			return new double[]{cfg.getLength(), rad, rad * 3};
 		});
-
 		String name = sim.getName();
-		File poster = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + "-poster.png");
-		FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, pitch, vel,
-				dims[0], dims[1], dims[2], w, h, fps, seconds, scene);
-		int frames = r.render(out, poster, ffmpeg);
 
 		JsonObject result = new JsonObject();
+		String blender = findBlender();
+		if (blender != null) {
+			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0],
+					out, w, h, fps, seconds, sceneStr);
+			result.addProperty("renderer", "blender");
+			result.addProperty("frames", frames);
+		} else {
+			String ffmpeg = findFfmpeg();
+			if (ffmpeg == null) {
+				throw new ToolException("Neither Blender nor ffmpeg was found. Install Blender "
+						+ "(`brew install --cask blender`) for a photoreal video, or ffmpeg for the "
+						+ "built-in renderer.");
+			}
+			FlightVideoRenderer.Scene scene = FlightVideoRenderer.Scene.valueOf(sceneStr.toUpperCase());
+			File poster = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + "-poster.png");
+			FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, pitch, vel,
+					dims[0], dims[1], dims[2], w, h, fps, seconds, scene);
+			int frames = r.render(out, poster, ffmpeg);
+			result.addProperty("renderer", "software");
+			result.addProperty("frames", frames);
+			result.addProperty("poster", poster.getAbsolutePath());
+		}
 		result.addProperty("ok", true);
 		result.addProperty("file", out.getAbsolutePath());
-		result.addProperty("poster", poster.getAbsolutePath());
-		result.addProperty("frames", frames);
 		result.addProperty("durationSeconds", seconds);
-		result.addProperty("scene", scene.name());
+		result.addProperty("scene", sceneStr);
 		result.addProperty("resolution", w + "x" + h);
 		return result;
+	}
+
+	/** Render the real rocket model flying its trajectory via headless Blender (Eevee -> H.264). */
+	private int renderViaBlender(String blender, OpenRocketDocument doc, double[] tt, double[] alt,
+			double[] range, double[] pitch, double[] vel, double length, File out, int w, int h,
+			int fps, double seconds, String sceneStr) throws Exception {
+		int n = tt.length;
+		double flightTime = tt[n - 1];
+		double apogeeTime = tt[0];
+		double maxAltV = -1;
+		double burnout = tt[0];
+		double mv = -1;
+		for (int i = 0; i < n; i++) {
+			if (alt[i] > maxAltV) {
+				maxAltV = alt[i];
+				apogeeTime = tt[i];
+			}
+			if (vel[i] > mv) {
+				mv = vel[i];
+				burnout = tt[i];
+			}
+		}
+		int totalFrames = Math.max(2, (int) Math.round(fps * seconds));
+		double rocketLen = Math.max(0.1, length);
+
+		JsonArray rocketArr = new JsonArray();
+		JsonArray camArr = new JsonArray();
+		JsonArray flameArr = new JsonArray();
+		for (int f = 0; f < totalFrames; f++) {
+			double u = (double) f / (totalFrames - 1);
+			double ft = videoWarp(u, apogeeTime, flightTime);
+			double rx = sampleAt(tt, range, ft);
+			double rz = sampleAt(tt, alt, ft);
+			// Tilt from the trajectory slope (vertical at liftoff, leaning as it arcs over) — this
+			// is convention-independent, unlike ORIENTATION_THETA.
+			double dr = sampleAt(tt, range, ft + 0.1) - sampleAt(tt, range, ft - 0.1);
+			double da = sampleAt(tt, alt, ft + 0.1) - sampleAt(tt, alt, ft - 0.1);
+			double tilt = Math.toDegrees(Math.atan2(dr, da));
+			JsonArray rp = new JsonArray();
+			rp.add(rx);
+			rp.add(0.0);
+			rp.add(rz);
+			rp.add(tilt);
+			rocketArr.add(rp);
+
+			double[] cam = cameraPos(ft, rx, rz, rocketLen, apogeeTime, flightTime);
+			JsonArray cp = new JsonArray();
+			cp.add(cam[0]);
+			cp.add(cam[1]);
+			cp.add(cam[2]);
+			camArr.add(cp);
+
+			double flame = (ft <= burnout && ft < apogeeTime) ? (0.85 + 0.15 * Math.sin(f * 1.7)) : 0.0;
+			flameArr.add(flame);
+		}
+
+		File obj = File.createTempFile("orrocket", ".obj");
+		exportObjForRender(doc, obj);
+
+		JsonObject cfg = new JsonObject();
+		cfg.addProperty("obj", obj.getAbsolutePath());
+		cfg.addProperty("out", out.getAbsolutePath());
+		cfg.addProperty("width", w);
+		cfg.addProperty("height", h);
+		cfg.addProperty("fps", fps);
+		cfg.addProperty("totalFrames", totalFrames);
+		cfg.addProperty("scene", sceneStr);
+		cfg.addProperty("rocketScale", 3.0);
+		cfg.addProperty("lens", 38);
+		cfg.add("rocket", rocketArr);
+		cfg.add("cameras", camArr);
+		cfg.add("flame", flameArr);
+
+		File cfgFile = File.createTempFile("orflight", ".json");
+		java.nio.file.Files.writeString(cfgFile.toPath(), new com.google.gson.Gson().toJson(cfg));
+
+		File script = File.createTempFile("blender_flight", ".py");
+		try (java.io.InputStream in = getClass().getResourceAsStream(
+				"/info/openrocket/swing/mcp/blender_flight.py")) {
+			if (in == null) {
+				throw new ToolException("Bundled Blender script not found on the classpath.");
+			}
+			java.nio.file.Files.copy(in, script.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		}
+
+		List<String> cmd = new java.util.ArrayList<>();
+		cmd.add(blender);
+		cmd.add("--background");
+		cmd.add("--python");
+		cmd.add(script.getAbsolutePath());
+		cmd.add("--");
+		cmd.add(cfgFile.getAbsolutePath());
+		Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+		String log = new String(p.getInputStream().readAllBytes());
+		int code = p.waitFor();
+		if (code != 0 || !out.exists()) {
+			throw new ToolException("Blender render failed (exit " + code + "): "
+					+ log.substring(Math.max(0, log.length() - 500)));
+		}
+		return totalFrames;
+	}
+
+	private static double videoWarp(double u, double apogeeTime, double flightTime) {
+		double ascentFrac = 0.6;
+		if (u < ascentFrac) {
+			return (u / ascentFrac) * apogeeTime;
+		}
+		return apogeeTime + ((u - ascentFrac) / (1 - ascentFrac)) * (flightTime - apogeeTime);
+	}
+
+	/** Camera world position (Blender coords X=downrange, Y=lateral, Z=alt) per flight phase. */
+	private static double[] cameraPos(double ft, double rx, double rz, double len,
+			double apogeeTime, double flightTime) {
+		double back = Math.max(3, len * 6);
+		if (ft < 0.9) {
+			return new double[]{16, -18, 2};
+		} else if (ft < Math.max(2.2, apogeeTime * 0.35)) {
+			return new double[]{rx - back, -back, rz + Math.max(1, len * 3)};
+		} else if (ft < apogeeTime * 0.9) {
+			return new double[]{45, 24, 3};
+		} else if (ft < apogeeTime * 1.15) {
+			double a = ft * 1.3;
+			double r = Math.max(4, len * 8);
+			return new double[]{rx + r * Math.cos(a), r * Math.sin(a), rz + 2};
+		} else if (ft < apogeeTime + (flightTime - apogeeTime) * 0.45) {
+			return new double[]{rx + len * 1.6, -len * 1.0, rz + len * 0.3};
+		} else {
+			return new double[]{12, -12, 2};
+		}
+	}
+
+	private static double sampleAt(double[] tt, double[] arr, double ft) {
+		int n = tt.length;
+		if (ft <= tt[0]) {
+			return arr[0];
+		}
+		if (ft >= tt[n - 1]) {
+			return arr[n - 1];
+		}
+		int i = 0;
+		while (i < n - 1 && tt[i + 1] < ft) {
+			i++;
+		}
+		double span = tt[i + 1] - tt[i];
+		double fr = span > 1e-9 ? (ft - tt[i]) / span : 0;
+		return arr[i] + (arr[i + 1] - arr[i]) * fr;
+	}
+
+	private void exportObjForRender(OpenRocketDocument doc, File f) {
+		OBJExportOptions oo = new OBJExportOptions(doc.getRocket());
+		oo.setExportChildren(true);
+		oo.setExportAppearance(true);
+		new OBJExporterFactory(doc.getRocket().getChildren(),
+				doc.getRocket().getSelectedConfiguration(), f, oo, new WarningSet()).doExport();
+	}
+
+	private static String findBlender() {
+		String[] candidates = {"/usr/local/bin/blender", "/opt/homebrew/bin/blender",
+				"/Applications/Blender.app/Contents/MacOS/Blender", "/usr/bin/blender"};
+		for (String c : candidates) {
+			if (new File(c).canExecute()) {
+				return c;
+			}
+		}
+		String pathEnv = System.getenv("PATH");
+		if (pathEnv != null) {
+			for (String dir : pathEnv.split(File.pathSeparator)) {
+				File f = new File(dir, "blender");
+				if (f.canExecute()) {
+					return f.getAbsolutePath();
+				}
+			}
+		}
+		return null;
 	}
 
 	private static String findFfmpeg() {

@@ -3,25 +3,50 @@ import bpy, json, sys, math, mathutils, random
 cfg = json.load(open(sys.argv[sys.argv.index("--") + 1:][0]))
 
 
-def build_environment(sc_type):
-    """Scatter trees + distant hills for depth/parallax."""
+# Per-environment look: sky (horizon, zenith), sun (elevation deg, energy, colour),
+# ground colour, tree count, tree colour, snow flag, hill colour.
+ENVP = {
+    "day":    dict(sky=((0.38, 0.60, 0.92), (0.04, 0.22, 0.85)), sun=(48, 4.0, (1.0, 0.98, 0.95)),
+                   ground=(0.06, 0.14, 0.05), trees=80, tree=(0.03, 0.13, 0.03), snow=False,
+                   hill=(0.06, 0.11, 0.07)),
+    "forest": dict(sky=((0.50, 0.66, 0.86), (0.10, 0.34, 0.72)), sun=(42, 3.2, (1.0, 0.97, 0.90)),
+                   ground=(0.03, 0.09, 0.02), trees=180, tree=(0.02, 0.10, 0.02), snow=False,
+                   hill=(0.03, 0.09, 0.04)),
+    "winter": dict(sky=((0.78, 0.84, 0.93), (0.34, 0.50, 0.74)), sun=(16, 2.6, (0.82, 0.88, 1.0)),
+                   ground=(0.86, 0.89, 0.97), trees=110, tree=(0.06, 0.13, 0.07), snow=True,
+                   hill=(0.80, 0.84, 0.93)),
+    "desert": dict(sky=((0.82, 0.80, 0.66), (0.18, 0.42, 0.78)), sun=(62, 5.2, (1.0, 0.94, 0.78)),
+                   ground=(0.58, 0.47, 0.30), trees=0, tree=(0, 0, 0), snow=False,
+                   hill=(0.50, 0.40, 0.26)),
+    "sunset": dict(sky=((0.98, 0.48, 0.18), (0.05, 0.06, 0.28)), sun=(6, 3.0, (1.0, 0.58, 0.32)),
+                   ground=(0.18, 0.10, 0.05), trees=60, tree=(0.06, 0.04, 0.02), snow=False,
+                   hill=(0.14, 0.08, 0.05)),
+}
+
+
+def build_environment(p):
+    """Scatter trees + distant hills for depth/parallax, coloured for the environment."""
     random.seed(7)
     leaf = bpy.data.materials.new("Leaf"); leaf.use_nodes = True
     lb = leaf.node_tree.nodes.get("Principled BSDF")
-    lb.inputs["Base Color"].default_value = (0.05, 0.04, 0.02, 1) if sc_type == "sunset" else (0.03, 0.13, 0.03, 1)
+    lb.inputs["Base Color"].default_value = (*p["tree"], 1)
     lb.inputs["Roughness"].default_value = 1.0
+    snowmat = None
+    if p["snow"]:
+        snowmat = bpy.data.materials.new("Snowcap"); snowmat.use_nodes = True
+        snowmat.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (0.95, 0.96, 1.0, 1)
     trunk = bpy.data.materials.new("Trunk"); trunk.use_nodes = True
     trunk.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (0.08, 0.05, 0.02, 1)
-    for _ in range(70):
+    for _ in range(p["trees"]):
         ang = random.uniform(0, 2 * math.pi); rad = random.uniform(14, 240)
         x = math.cos(ang) * rad; y = math.sin(ang) * rad; hgt = random.uniform(3, 9)
         bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=hgt * 0.4, location=(x, y, hgt * 0.2))
         bpy.context.active_object.data.materials.append(trunk)
         bpy.ops.mesh.primitive_cone_add(radius1=hgt * 0.38, radius2=0, depth=hgt, location=(x, y, hgt * 0.4 + hgt * 0.5))
-        bpy.context.active_object.data.materials.append(leaf)
+        cone = bpy.context.active_object
+        cone.data.materials.append(snowmat if (snowmat and random.random() < 0.7) else leaf)
     hill = bpy.data.materials.new("Hill"); hill.use_nodes = True
-    hill.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = \
-        (0.12, 0.08, 0.05, 1) if sc_type == "sunset" else (0.06, 0.11, 0.07, 1)
+    hill.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (*p["hill"], 1)
     for _ in range(16):
         ang = random.uniform(0, 2 * math.pi); rad = random.uniform(900, 1900)
         x = math.cos(ang) * rad; y = math.sin(ang) * rad
@@ -29,10 +54,15 @@ def build_environment(sc_type):
         bpy.ops.mesh.primitive_cone_add(radius1=rr, radius2=0, depth=hh, location=(x, y, hh * 0.5 - 40))
         bpy.context.active_object.data.materials.append(hill)
 
-# ---- clean scene ----
-bpy.ops.wm.read_factory_settings(use_empty=True)
+# ---- clean scene, or open a custom .blend environment (your own template) ----
+custom_scene = cfg.get("sceneFile")
+if custom_scene:
+    bpy.ops.wm.open_mainfile(filepath=custom_scene)
+else:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 sc_type = cfg.get("scene", "day")
+p = ENVP.get(sc_type, ENVP["day"])
 
 scene.render.resolution_x = cfg["width"]
 scene.render.resolution_y = cfg["height"]
@@ -55,70 +85,67 @@ try:
 except Exception:
     pass
 
-# ---- world / sky ----
-world = bpy.data.worlds.new("World"); scene.world = world
-world.use_nodes = True
-nt = world.node_tree
-for n in list(nt.nodes):
-    nt.nodes.remove(n)
-out = nt.nodes.new("ShaderNodeOutputWorld")
-bg = nt.nodes.new("ShaderNodeBackground")
-nt.links.new(bg.outputs[0], out.inputs[0])
-if sc_type == "space":
-    bg.inputs[0].default_value = (0.01, 0.01, 0.02, 1)
-    bg.inputs[1].default_value = 1.0
-else:
-    # Custom vertical gradient sky (fully controllable, vivid, never blows out): map the view
-    # ray's up-component to a horizon->zenith colour ramp.
-    geo = nt.nodes.new("ShaderNodeNewGeometry")
-    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(geo.outputs["Incoming"], sep.inputs[0])
-    mr = nt.nodes.new("ShaderNodeMapRange")
-    mr.inputs["From Min"].default_value = -0.1
-    mr.inputs["From Max"].default_value = 0.38
-    nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    if sc_type == "sunset":
-        ramp.color_ramp.elements[0].color = (0.98, 0.48, 0.18, 1)   # horizon
-        ramp.color_ramp.elements[1].color = (0.05, 0.06, 0.28, 1)   # zenith
+if not custom_scene:
+    # ---- world / sky ----
+    world = bpy.data.worlds.new("World"); scene.world = world
+    world.use_nodes = True
+    nt = world.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputWorld")
+    bg = nt.nodes.new("ShaderNodeBackground")
+    nt.links.new(bg.outputs[0], out.inputs[0])
+    if sc_type == "space":
+        bg.inputs[0].default_value = (0.01, 0.01, 0.02, 1)
     else:
-        ramp.color_ramp.elements[0].color = (0.38, 0.60, 0.92, 1)   # horizon
-        ramp.color_ramp.elements[1].color = (0.04, 0.22, 0.85, 1)   # deep blue zenith
-    nt.links.new(mr.outputs[0], ramp.inputs[0])
-    nt.links.new(ramp.outputs[0], bg.inputs[0])
+        # Controllable vertical gradient sky: view ray up-component -> horizon..zenith ramp.
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(geo.outputs["Incoming"], sep.inputs[0])
+        mr = nt.nodes.new("ShaderNodeMapRange")
+        mr.inputs["From Min"].default_value = -0.1
+        mr.inputs["From Max"].default_value = 0.38
+        nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
+        ramp = nt.nodes.new("ShaderNodeValToRGB")
+        ramp.color_ramp.elements[0].color = (*p["sky"][0], 1)
+        ramp.color_ramp.elements[1].color = (*p["sky"][1], 1)
+        nt.links.new(mr.outputs[0], ramp.inputs[0])
+        nt.links.new(ramp.outputs[0], bg.inputs[0])
     bg.inputs[1].default_value = 1.0
 
-# ---- sun ----
-sd = bpy.data.lights.new("Sun", "SUN"); so = bpy.data.objects.new("Sun", sd)
-scene.collection.objects.link(so)
-sd.energy = 2.0 if sc_type == "space" else 4.0
-sd.angle = math.radians(1)
-elev = 5 if sc_type == "sunset" else 45
-so.rotation_euler = (math.radians(90 - elev), 0, math.radians(40))
-
-# ---- ground ----
-if sc_type != "space":
-    bpy.ops.mesh.primitive_plane_add(size=20000)
-    gp = bpy.context.active_object
-    gm = bpy.data.materials.new("Ground"); gm.use_nodes = True
-    gnt = gm.node_tree
-    gb = gnt.nodes.get("Principled BSDF")
-    gb.inputs["Roughness"].default_value = 1.0
-    tex = gnt.nodes.new("ShaderNodeTexNoise"); tex.inputs["Scale"].default_value = 1800.0
-    ramp = gnt.nodes.new("ShaderNodeValToRGB")
-    if sc_type == "sunset":
-        ramp.color_ramp.elements[0].color = (0.14, 0.08, 0.03, 1)
-        ramp.color_ramp.elements[1].color = (0.30, 0.18, 0.09, 1)
+    # ---- sun ----
+    sd = bpy.data.lights.new("Sun", "SUN"); so = bpy.data.objects.new("Sun", sd)
+    scene.collection.objects.link(so)
+    sd.angle = math.radians(1)
+    if sc_type == "space":
+        sd.energy = 2.0
+        elev = 60
     else:
-        ramp.color_ramp.elements[0].color = (0.03, 0.10, 0.03, 1)
-        ramp.color_ramp.elements[1].color = (0.11, 0.24, 0.08, 1)
-    gnt.links.new(tex.outputs["Fac"], ramp.inputs[0])
-    gnt.links.new(ramp.outputs[0], gb.inputs["Base Color"])
-    bump = gnt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.2
-    gnt.links.new(tex.outputs["Fac"], bump.inputs["Height"])
-    gnt.links.new(bump.outputs[0], gb.inputs["Normal"])
-    gp.data.materials.append(gm)
-    build_environment(sc_type)
+        sd.energy = p["sun"][1]
+        sd.color = p["sun"][2]
+        elev = p["sun"][0]
+    so.rotation_euler = (math.radians(90 - elev), 0, math.radians(40))
+
+    # ---- ground + environment ----
+    if sc_type != "space":
+        bpy.ops.mesh.primitive_plane_add(size=20000)
+        gp = bpy.context.active_object
+        gm = bpy.data.materials.new("Ground"); gm.use_nodes = True
+        gnt = gm.node_tree
+        gb = gnt.nodes.get("Principled BSDF")
+        gb.inputs["Roughness"].default_value = 1.0
+        tex = gnt.nodes.new("ShaderNodeTexNoise"); tex.inputs["Scale"].default_value = 1800.0
+        ramp = gnt.nodes.new("ShaderNodeValToRGB")
+        g = p["ground"]
+        ramp.color_ramp.elements[0].color = (g[0] * 0.8, g[1] * 0.8, g[2] * 0.8, 1)
+        ramp.color_ramp.elements[1].color = (min(1, g[0] * 1.2), min(1, g[1] * 1.2), min(1, g[2] * 1.2), 1)
+        gnt.links.new(tex.outputs["Fac"], ramp.inputs[0])
+        gnt.links.new(ramp.outputs[0], gb.inputs["Base Color"])
+        bump = gnt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.15
+        gnt.links.new(tex.outputs["Fac"], bump.inputs["Height"])
+        gnt.links.new(bump.outputs[0], gb.inputs["Normal"])
+        gp.data.materials.append(gm)
+        build_environment(p)
 
 # ---- import rocket ----
 before = set(bpy.data.objects)
@@ -166,7 +193,7 @@ body_r = cfg.get("bodyRadius", 0.0125) * scl
 rk_len = cfg.get("length", 0.5) * scl
 
 # launch pad + rod at the origin (where the rocket lifts off) for realism/scale
-if sc_type != "space":
+if not custom_scene and sc_type != "space":
     bpy.ops.mesh.primitive_cylinder_add(radius=1.4, depth=0.18, location=(0, 0, 0.09))
     pad = bpy.context.active_object
     pm = bpy.data.materials.new("Pad"); pm.use_nodes = True

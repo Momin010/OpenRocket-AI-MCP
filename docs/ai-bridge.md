@@ -52,7 +52,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `save_screenshot` | Save a PNG of the design view (2D schematic side/back/top, or 3D) |
 | `animate_flight` | Open an animated 2D playback of the rocket flying its trajectory |
-| `render_flight_video` | Photoreal 3D launch via Blender (real rocket model, launch pad, trees/hills for depth, parachute, exhaust, auto-zoom). Multi-camera cuts by default, or set `camera` for a single-angle clip; `scene` day/sunset/space. Set `interactive:true` to **open the scene live in Blender** (orbit/zoom/scrub/switch cameras in real time) instead of rendering a video |
+| `render_flight_video` | Photoreal 3D launch via Blender (real rocket model, launch pad, trees/hills, parachute, exhaust, auto-zoom). `scene`: day/sunset/space/forest/winter/desert; `quality`: hd/fullhd/2k/4k; `sceneFile`: your own `.blend` environment (rocket spawns at origin); `camera` for a single-angle clip; `interactive:true` to **open it live in Blender** (orbit/zoom/scrub) |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
 | `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |
@@ -76,6 +76,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `set_deployment` | Recovery device deploy event/altitude/delay |
 | `move_component` / `duplicate_component` | Reparent or duplicate a component |
 | `set_simulation_options` | Set launch conditions (rod, wind, altitude, temperature, …) |
+| `apply_environment` | Apply real-world launch physics by place (finland_summer/finland_winter/desert/high_altitude/coastal/calm) |
 | `add_simulation_extension` | Attach extensions (AirStart, StopSimulation, RollControl, …) |
 | `optimize_parameter` | Auto-tune a component parameter for max/target apogee or target stability |
 | `search_motors` | Search the thrust-curve motor database |

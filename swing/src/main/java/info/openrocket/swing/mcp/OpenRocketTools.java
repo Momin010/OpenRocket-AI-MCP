@@ -144,6 +144,7 @@ public class OpenRocketTools {
 			case "render_flight_video": return renderFlightVideo(args);
 			case "export_design":       return exportDesign(args);
 			case "set_simulation_options": return setSimulationOptions(args);
+			case "apply_environment":   return applyEnvironment(args);
 			case "add_simulation_extension": return addSimulationExtension(args);
 			case "optimize_parameter":  return optimizeParameter(args);
 			case "delete_simulation":   return deleteSimulation(args);
@@ -1339,11 +1340,26 @@ public class OpenRocketTools {
 		final File out = new File(path);
 		int w = args.has("width") ? args.get("width").getAsInt() : 1280;
 		int h = args.has("height") ? args.get("height").getAsInt() : 720;
+		String quality = optString(args, "quality", null);
+		if (quality != null) {
+			switch (quality.toLowerCase()) {
+				case "hd":     w = 1280; h = 720; break;
+				case "fullhd": case "1080p": w = 1920; h = 1080; break;
+				case "2k":     case "1440p": w = 2560; h = 1440; break;
+				case "4k":     case "2160p": w = 3840; h = 2160; break;
+				default: break;
+			}
+		}
 		int fps = args.has("fps") ? args.get("fps").getAsInt() : 24;
 		double seconds = args.has("seconds") ? args.get("seconds").getAsDouble() : 14;
 		String sceneStr = optString(args, "scene", "day").toLowerCase();
-		if (!sceneStr.equals("day") && !sceneStr.equals("sunset") && !sceneStr.equals("space")) {
-			throw new ToolException("Unknown scene. Options: day, sunset, space.");
+		java.util.Set<String> scenes = java.util.Set.of("day", "sunset", "space", "forest", "winter", "desert");
+		if (!scenes.contains(sceneStr)) {
+			throw new ToolException("Unknown scene. Options: day, sunset, space, forest, winter, desert.");
+		}
+		String sceneFile = optString(args, "sceneFile", null);
+		if (sceneFile != null && !new File(sceneFile).exists()) {
+			throw new ToolException("sceneFile (custom .blend) not found: " + sceneFile);
 		}
 
 		final double[] tt = orZeros(series(branch, FlightDataType.TYPE_TIME, len), len);
@@ -1374,9 +1390,12 @@ public class OpenRocketTools {
 		if (interactive && blender == null) {
 			throw new ToolException("Interactive 3D needs Blender installed (brew install --cask blender).");
 		}
+		if (sceneFile != null && blender == null) {
+			throw new ToolException("Custom .blend scenes need Blender installed.");
+		}
 		if (blender != null) {
 			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0], dims[1],
-					out, w, h, fps, seconds, sceneStr, fixedCam, interactive);
+					out, w, h, fps, seconds, sceneStr, fixedCam, interactive, sceneFile);
 			result.addProperty("renderer", "blender");
 			result.addProperty("frames", frames);
 			if (fixedCam != null && !fixedCam.isBlank()) {
@@ -1394,7 +1413,12 @@ public class OpenRocketTools {
 						+ "(`brew install --cask blender`) for a photoreal video, or ffmpeg for the "
 						+ "built-in renderer.");
 			}
-			FlightVideoRenderer.Scene scene = FlightVideoRenderer.Scene.valueOf(sceneStr.toUpperCase());
+			FlightVideoRenderer.Scene scene;
+			try {
+				scene = FlightVideoRenderer.Scene.valueOf(sceneStr.toUpperCase());
+			} catch (IllegalArgumentException e) {
+				scene = FlightVideoRenderer.Scene.DAY;
+			}
 			File poster = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + "-poster.png");
 			FlightVideoRenderer r = new FlightVideoRenderer(name, tt, alt, range, pitch, vel,
 					dims[0], dims[1], dims[2], w, h, fps, seconds, scene);
@@ -1416,8 +1440,8 @@ public class OpenRocketTools {
 	/** Render the real rocket model flying its trajectory via headless Blender (Eevee -> H.264). */
 	private int renderViaBlender(String blender, OpenRocketDocument doc, double[] tt, double[] alt,
 			double[] range, double[] pitch, double[] vel, double length, double bodyRadius, File out,
-			int w, int h, int fps, double seconds, String sceneStr, String fixedCam, boolean interactive)
-			throws Exception {
+			int w, int h, int fps, double seconds, String sceneStr, String fixedCam, boolean interactive,
+			String sceneFile) throws Exception {
 		int n = tt.length;
 		double flightTime = tt[n - 1];
 		double apogeeTime = tt[0];
@@ -1506,6 +1530,9 @@ public class OpenRocketTools {
 		if (interactive) {
 			cfg.addProperty("interactive", true);
 			cfg.addProperty("blendPath", blend.getAbsolutePath());
+		}
+		if (sceneFile != null) {
+			cfg.addProperty("sceneFile", new File(sceneFile).getAbsolutePath());
 		}
 
 		File cfgFile = File.createTempFile("orflight", ".json");
@@ -1736,6 +1763,62 @@ public class OpenRocketTools {
 		result.addProperty("ok", true);
 		result.addProperty("format", reportFormat);
 		result.addProperty("file", f.getAbsolutePath());
+		return result;
+	}
+
+	/**
+	 * Apply a real-world environment's launch conditions (wind, turbulence, temperature, altitude)
+	 * to a simulation, so the flight physics matches the place. Cold/dense air and wind cut apogee.
+	 */
+	private JsonObject applyEnvironment(JsonObject args) throws Exception {
+		OpenRocketDocument doc = activeFrame(args).getDocument();
+		// Resolve the simulation via simName/index (the 'name' arg is the environment name).
+		JsonObject simArgs = new JsonObject();
+		if (args.has("simName")) {
+			simArgs.add("name", args.get("simName"));
+		}
+		if (args.has("index")) {
+			simArgs.add("index", args.get("index"));
+		}
+		Simulation sim = resolveSimulation(doc, simArgs);
+		String name = requireString(args, "name").toLowerCase();
+		// name -> { windSpeed m/s, turbulence 0-1, temperature K, altitude m }
+		double wind;
+		double turb;
+		double tempK;
+		double altM;
+		switch (name) {
+			case "finland_summer": wind = 5;  turb = 0.15; tempK = 288.15; altM = 100;  break;
+			case "finland_winter": wind = 8;  turb = 0.20; tempK = 263.15; altM = 100;  break;
+			case "desert":         wind = 3;  turb = 0.10; tempK = 313.15; altM = 300;  break;
+			case "high_altitude":  case "mountain": wind = 6; turb = 0.20; tempK = 278.15; altM = 2000; break;
+			case "coastal":        wind = 9;  turb = 0.25; tempK = 290.15; altM = 5;    break;
+			case "calm":           wind = 0;  turb = 0.00; tempK = 288.15; altM = 0;    break;
+			default:
+				throw new ToolException("Unknown environment '" + name + "'. Options: finland_summer, "
+						+ "finland_winter, desert, high_altitude, coastal, calm.");
+		}
+		final double fwind = wind;
+		final double fturb = turb;
+		final double ftemp = tempK;
+		final double falt = altM;
+		onEdt(() -> {
+			SimulationOptions o = sim.getOptions();
+			o.setWindSpeedAverage(fwind);
+			o.setWindTurbulenceIntensity(fturb);
+			o.setLaunchTemperature(ftemp);
+			o.setLaunchAltitude(falt);
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("environment", name);
+		result.addProperty("windSpeedMs", wind);
+		result.addProperty("turbulence", turb);
+		result.addProperty("temperatureC", tempK - 273.15);
+		result.addProperty("altitudeM", altM);
+		result.addProperty("note", "Applied to '" + sim.getName() + "'. Re-run the simulation to "
+				+ "see the effect (cold dense air + wind reduce apogee).");
 		return result;
 	}
 
@@ -2378,10 +2461,11 @@ public class OpenRocketTools {
 				+ "(real rocket model via Blender if installed). By default multiple auto-tracking "
 				+ "cameras cut through the launch; set 'camera' to lock ONE angle for the whole clip "
 				+ "(ground/chase/tracking/orbit/onboard/recovery) so you can render several single-"
-				+ "angle clips and edit them yourself. scene: day/sunset/space. Set interactive=true to "
-				+ "OPEN the 3D scene live in Blender (orbit/zoom/scrub/switch cameras in real time) "
-				+ "instead of rendering a video.",
-				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"camera\":{\"type\":\"string\"},\"interactive\":{\"type\":\"boolean\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
+				+ "angle clips and edit them yourself. scene: day/sunset/space/forest/winter/desert. "
+				+ "quality: hd/fullhd/2k/4k. sceneFile: path to your own .blend environment (rocket "
+				+ "spawns at the origin). interactive=true OPENS the scene live in Blender (orbit/"
+				+ "zoom/scrub/switch cameras) instead of rendering a video.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"sceneFile\":{\"type\":\"string\"},\"quality\":{\"type\":\"string\"},\"camera\":{\"type\":\"string\"},\"interactive\":{\"type\":\"boolean\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("export_design",
 				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
 				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",
@@ -2421,6 +2505,11 @@ public class OpenRocketTools {
 		tools.add(tool("duplicate_component",
 				"Duplicate a component (and its children) next to itself under the same parent.",
 				"{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"id\"]}"));
+		tools.add(tool("apply_environment",
+				"Apply a real-world environment's launch physics (wind, turbulence, temperature, "
+				+ "altitude) to a simulation so the flight matches the place. name: finland_summer, "
+				+ "finland_winter, desert, high_altitude, coastal, calm. Re-run the sim to see the effect.",
+				"{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"index\":{\"type\":\"integer\"},\"simName\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"name\"]}"));
 		tools.add(tool("set_simulation_options",
 				"Set launch conditions / options on a simulation. 'properties' maps option names to "
 				+ "values, e.g. {\"launchRodLength\":2.0,\"launchRodAngle\":0.0,\"windSpeedAverage\":3.0,"

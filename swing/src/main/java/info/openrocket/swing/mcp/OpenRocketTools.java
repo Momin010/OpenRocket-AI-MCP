@@ -1368,15 +1368,24 @@ public class OpenRocketTools {
 		String name = sim.getName();
 
 		String fixedCam = optString(args, "camera", null);
+		boolean interactive = args.has("interactive") && args.get("interactive").getAsBoolean();
 		JsonObject result = new JsonObject();
 		String blender = findBlender();
+		if (interactive && blender == null) {
+			throw new ToolException("Interactive 3D needs Blender installed (brew install --cask blender).");
+		}
 		if (blender != null) {
 			int frames = renderViaBlender(blender, doc, tt, alt, range, pitch, vel, dims[0], dims[1],
-					out, w, h, fps, seconds, sceneStr, fixedCam);
+					out, w, h, fps, seconds, sceneStr, fixedCam, interactive);
 			result.addProperty("renderer", "blender");
 			result.addProperty("frames", frames);
 			if (fixedCam != null && !fixedCam.isBlank()) {
 				result.addProperty("camera", fixedCam);
+			}
+			if (interactive) {
+				result.addProperty("mode", "interactive");
+				result.addProperty("note", "Blender opened with the scene. Middle-mouse drag to "
+						+ "orbit, scroll to zoom, Numpad-0 for the camera view, Spacebar to play.");
 			}
 		} else {
 			String ffmpeg = findFfmpeg();
@@ -1395,7 +1404,9 @@ public class OpenRocketTools {
 			result.addProperty("poster", poster.getAbsolutePath());
 		}
 		result.addProperty("ok", true);
-		result.addProperty("file", out.getAbsolutePath());
+		result.addProperty("file", interactive
+				? out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + ".blend"
+				: out.getAbsolutePath());
 		result.addProperty("durationSeconds", seconds);
 		result.addProperty("scene", sceneStr);
 		result.addProperty("resolution", w + "x" + h);
@@ -1405,7 +1416,8 @@ public class OpenRocketTools {
 	/** Render the real rocket model flying its trajectory via headless Blender (Eevee -> H.264). */
 	private int renderViaBlender(String blender, OpenRocketDocument doc, double[] tt, double[] alt,
 			double[] range, double[] pitch, double[] vel, double length, double bodyRadius, File out,
-			int w, int h, int fps, double seconds, String sceneStr, String fixedCam) throws Exception {
+			int w, int h, int fps, double seconds, String sceneStr, String fixedCam, boolean interactive)
+			throws Exception {
 		int n = tt.length;
 		double flightTime = tt[n - 1];
 		double apogeeTime = tt[0];
@@ -1429,6 +1441,7 @@ public class OpenRocketTools {
 		JsonArray camArr = new JsonArray();
 		JsonArray flameArr = new JsonArray();
 		JsonArray chuteArr = new JsonArray();
+		JsonArray lensArr = new JsonArray();
 		for (int f = 0; f < totalFrames; f++) {
 			double u = (double) f / (totalFrames - 1);
 			double ft = videoWarp(u, apogeeTime, flightTime);
@@ -1460,6 +1473,10 @@ public class OpenRocketTools {
 			cp.add(cam[2]);
 			camArr.add(cp);
 
+			// distance-based zoom so the rocket stays well framed (telephoto when far)
+			double dist = Math.sqrt(Math.pow(rx - cam[0], 2) + Math.pow(cam[1], 2) + Math.pow(rz - cam[2], 2));
+			lensArr.add(Math.max(28.0, Math.min(300.0, 4.0 * dist)));
+
 			double flame = (ft <= burnout && ft < apogeeTime) ? (0.85 + 0.15 * Math.sin(f * 1.7)) : 0.0;
 			flameArr.add(flame);
 			chuteArr.add(deployed ? 1.0 : 0.0);
@@ -1476,7 +1493,7 @@ public class OpenRocketTools {
 		cfg.addProperty("fps", fps);
 		cfg.addProperty("totalFrames", totalFrames);
 		cfg.addProperty("scene", sceneStr);
-		cfg.addProperty("rocketScale", 3.0);
+		cfg.addProperty("rocketScale", 2.5);
 		cfg.addProperty("lens", 38);
 		cfg.addProperty("bodyRadius", bodyRadius);
 		cfg.addProperty("length", rocketLen);
@@ -1484,6 +1501,12 @@ public class OpenRocketTools {
 		cfg.add("cameras", camArr);
 		cfg.add("flame", flameArr);
 		cfg.add("chute", chuteArr);
+		cfg.add("lensSeq", lensArr);
+		File blend = new File(out.getAbsolutePath().replaceAll("(?i)\\.mp4$", "") + ".blend");
+		if (interactive) {
+			cfg.addProperty("interactive", true);
+			cfg.addProperty("blendPath", blend.getAbsolutePath());
+		}
 
 		File cfgFile = File.createTempFile("orflight", ".json");
 		java.nio.file.Files.writeString(cfgFile.toPath(), new com.google.gson.Gson().toJson(cfg));
@@ -1497,14 +1520,27 @@ public class OpenRocketTools {
 			java.nio.file.Files.copy(in, script.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		}
 
-		List<String> cmd = new java.util.ArrayList<>();
-		cmd.add(blender);
-		cmd.add("--background");
-		cmd.add("--python");
-		cmd.add(script.getAbsolutePath());
-		cmd.add("--");
-		cmd.add(cfgFile.getAbsolutePath());
-		Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+		if (interactive) {
+			// 1) Build + save the .blend headlessly (reliable). 2) Open it in the Blender GUI so
+			//    the user can orbit/zoom/scrub/switch cameras live.
+			Process bp = new ProcessBuilder(blender, "--background", "--python",
+					script.getAbsolutePath(), "--", cfgFile.getAbsolutePath())
+					.redirectErrorStream(true).start();
+			String buildLog = new String(bp.getInputStream().readAllBytes());
+			bp.waitFor();
+			if (!blend.exists()) {
+				throw new ToolException("Failed to build the 3D scene: "
+						+ buildLog.substring(Math.max(0, buildLog.length() - 500)));
+			}
+			new ProcessBuilder(blender, blend.getAbsolutePath())
+					.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+					.redirectError(ProcessBuilder.Redirect.DISCARD).start();
+			return totalFrames;
+		}
+
+		Process p = new ProcessBuilder(blender, "--background", "--python",
+				script.getAbsolutePath(), "--", cfgFile.getAbsolutePath())
+				.redirectErrorStream(true).start();
 		String log = new String(p.getInputStream().readAllBytes());
 		int code = p.waitFor();
 		if (code != 0 || !out.exists()) {
@@ -1537,7 +1573,7 @@ public class OpenRocketTools {
 					return new double[]{rx + r * Math.cos(a), r * Math.sin(a), rz + 2};
 				}
 				case "onboard":  return new double[]{rx + len * 1.6, -len, rz + len * 0.3};
-				case "recovery": return new double[]{12, -12, 2};
+				case "recovery": return new double[]{rx - 12, -12, rz + 5};
 				default: break;
 			}
 		}
@@ -1554,7 +1590,7 @@ public class OpenRocketTools {
 		} else if (ft < apogeeTime + (flightTime - apogeeTime) * 0.45) {
 			return new double[]{rx + len * 1.6, -len * 1.0, rz + len * 0.3};
 		} else {
-			return new double[]{12, -12, 2};
+			return new double[]{rx - 12, -12, rz + 5};   // recovery cam follows the descent
 		}
 	}
 
@@ -2342,8 +2378,10 @@ public class OpenRocketTools {
 				+ "(real rocket model via Blender if installed). By default multiple auto-tracking "
 				+ "cameras cut through the launch; set 'camera' to lock ONE angle for the whole clip "
 				+ "(ground/chase/tracking/orbit/onboard/recovery) so you can render several single-"
-				+ "angle clips and edit them yourself. scene: day/sunset/space.",
-				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"camera\":{\"type\":\"string\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
+				+ "angle clips and edit them yourself. scene: day/sunset/space. Set interactive=true to "
+				+ "OPEN the 3D scene live in Blender (orbit/zoom/scrub/switch cameras in real time) "
+				+ "instead of rendering a video.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"scene\":{\"type\":\"string\"},\"camera\":{\"type\":\"string\"},\"interactive\":{\"type\":\"boolean\"},\"seconds\":{\"type\":\"number\"},\"fps\":{\"type\":\"integer\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"index\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"));
 		tools.add(tool("export_design",
 				"Export the active design. format is 'rocksim' (.rkt), 'openrocket' (.ork), 'obj' "
 				+ "(3D-print mesh), 'svg' (laser-cut parts) or 'rasaero' (.CDX1).",

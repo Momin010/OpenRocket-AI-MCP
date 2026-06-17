@@ -137,11 +137,15 @@ rocket.name = "Rocket"
 # material if none
 if not rocket.data.materials:
     rm = bpy.data.materials.new("RocketBody"); rm.use_nodes = True
-    rb = rm.node_tree.nodes.get("Principled BSDF")
-    rb.inputs["Base Color"].default_value = (0.85, 0.86, 0.9, 1)
-    rb.inputs["Roughness"].default_value = 0.22
-    rb.inputs["Metallic"].default_value = 0.7
+    rm.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (0.9, 0.9, 0.92, 1)
     rocket.data.materials.append(rm)
+# realistic matte-painted finish on every rocket part (less plasticky than the raw export)
+for ms in rocket.data.materials:
+    if ms and ms.use_nodes:
+        bsdf = ms.node_tree.nodes.get("Principled BSDF")
+        if bsdf:
+            bsdf.inputs["Roughness"].default_value = 0.5
+            bsdf.inputs["Metallic"].default_value = 0.0
 
 # center on axis, base at z=0, optional scale
 scl = cfg.get("rocketScale", 1.0)
@@ -158,9 +162,28 @@ bpy.ops.object.transform_apply(location=True, rotation=False, scale=True)
 empty = bpy.data.objects.new("RocketRoot", None); scene.collection.objects.link(empty)
 rocket.parent = empty
 
-# exhaust flame: narrow emissive cone exactly at the nozzle (base z=0), tapering straight down
 body_r = cfg.get("bodyRadius", 0.0125) * scl
 rk_len = cfg.get("length", 0.5) * scl
+
+# launch pad + rod at the origin (where the rocket lifts off) for realism/scale
+if sc_type != "space":
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.4, depth=0.18, location=(0, 0, 0.09))
+    pad = bpy.context.active_object
+    pm = bpy.data.materials.new("Pad"); pm.use_nodes = True
+    pbs = pm.node_tree.nodes.get("Principled BSDF")
+    pbs.inputs["Base Color"].default_value = (0.22, 0.22, 0.24, 1)
+    pbs.inputs["Roughness"].default_value = 0.95
+    pad.data.materials.append(pm)
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.012, depth=rk_len * 1.6, location=(0.18, 0, rk_len * 0.8))
+    rod = bpy.context.active_object
+    rdm = bpy.data.materials.new("Rod"); rdm.use_nodes = True
+    rbs = rdm.node_tree.nodes.get("Principled BSDF")
+    rbs.inputs["Base Color"].default_value = (0.04, 0.04, 0.04, 1)
+    rbs.inputs["Metallic"].default_value = 0.8
+    rbs.inputs["Roughness"].default_value = 0.3
+    rod.data.materials.append(rdm)
+
+# exhaust flame: narrow emissive cone exactly at the nozzle (base z=0), tapering straight down
 fl_depth = rk_len * 0.5
 bpy.ops.mesh.primitive_cone_add(radius1=body_r * 0.8, radius2=0.0, depth=fl_depth, location=(0, 0, 0))
 flame = bpy.context.active_object; flame.name = "Flame"
@@ -221,6 +244,9 @@ for f in range(cfg["totalFrames"]):
     cx2, cy2, cz2 = C[f]
     cam.location = (cx2, cy2, cz2)
     cam.keyframe_insert("location", frame=fr)
+    if "lensSeq" in cfg:
+        cam.data.lens = cfg["lensSeq"][f]
+        cam.data.keyframe_insert("lens", frame=fr)
     fs = cfg["flame"][f] if "flame" in cfg else 0.0
     flame.scale = (fs, fs, fs)
     flame.keyframe_insert("scale", frame=fr)
@@ -228,4 +254,17 @@ for f in range(cfg["totalFrames"]):
     chute_root.scale = (cs, cs, cs)
     chute_root.keyframe_insert("scale", frame=fr)
 
-bpy.ops.render.render(animation=True)
+if cfg.get("interactive"):
+    # Leave Blender open for live exploration (orbit/zoom/scrub/switch cameras).
+    if cfg.get("blendPath"):
+        bpy.ops.wm.save_as_mainfile(filepath=cfg["blendPath"])
+    scene.frame_set(1)
+    # try to view through the camera in any 3D viewport
+    for area in bpy.context.screen.areas if bpy.context.screen else []:
+        if area.type == "VIEW_3D":
+            area.spaces[0].region_3d.view_perspective = "CAMERA"
+            for sp in area.spaces:
+                if sp.type == "VIEW_3D":
+                    sp.shading.type = "RENDERED"
+else:
+    bpy.ops.render.render(animation=True)

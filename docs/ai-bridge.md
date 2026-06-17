@@ -52,7 +52,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `save_screenshot` | Save a PNG of the design view (2D schematic side/back/top, or 3D) |
 | `animate_flight` | Open an animated 2D playback of the rocket flying its trajectory |
-| `render_flight_video` | Photoreal 3D MP4 of the launch via Blender (real rocket model, trees/hills for depth, parachute, exhaust). Multi-camera cuts by default, or set `camera` (ground/chase/tracking/orbit/onboard/recovery) for a single-angle clip; `scene` day/sunset/space |
+| `render_flight_video` | Photoreal 3D launch via Blender (real rocket model, launch pad, trees/hills for depth, parachute, exhaust, auto-zoom). Multi-camera cuts by default, or set `camera` for a single-angle clip; `scene` day/sunset/space. Set `interactive:true` to **open the scene live in Blender** (orbit/zoom/scrub/switch cameras in real time) instead of rendering a video |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
 | `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |

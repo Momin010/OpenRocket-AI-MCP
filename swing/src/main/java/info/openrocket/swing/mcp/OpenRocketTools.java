@@ -1637,7 +1637,11 @@ public class OpenRocketTools {
 			switch (fixedCam.toLowerCase()) {
 				case "ground":   return new double[]{16, -18, 2};
 				case "chase":    return new double[]{rx - back, -back, rz + Math.max(1, len * 3)};
-				case "tracking": return new double[]{45, 24, 3};
+				case "tracking": {
+					// side drone that rises WITH the rocket — broadside view, never craning up from the pad
+					double standoff = Math.max(5, len * 9);
+					return new double[]{rx, -standoff, rz + len * 0.8};
+				}
 				case "profile":  // broadside, perpendicular to the flight plane: screen tilt = true pitch
 					return new double[]{rx, -Math.max(40, len * 20 + rz), Math.max(2, rz)};
 				case "orbit": {
@@ -1655,7 +1659,9 @@ public class OpenRocketTools {
 		} else if (ft < Math.max(2.2, apogeeTime * 0.35)) {
 			return new double[]{rx - back, -back, rz + Math.max(1, len * 3)};
 		} else if (ft < apogeeTime * 0.9) {
-			return new double[]{45, 24, 3};
+			// side drone tracking: fly alongside at the rocket's altitude (not craning up from the pad)
+			double standoff = Math.max(5, len * 9);
+			return new double[]{rx, -standoff, rz + len * 0.8};
 		} else if (ft < apogeeTime * 1.15) {
 			double a = ft * 1.3;
 			double r = Math.max(4, len * 8);

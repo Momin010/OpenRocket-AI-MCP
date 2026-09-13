@@ -3,11 +3,11 @@
 OpenRocket can expose itself to AI agents (Claude Code, or any
 [Model Context Protocol](https://modelcontextprotocol.io) client) over a small local
 HTTP server. The agent can read the design you have open, run simulations, and edit
-components — and the changes appear **live** in the running GUI.
+components - and the changes appear **live** in the running GUI.
 
 ## Quick start
 
-1. **Launch OpenRocket** (needs JDK 17 to build — see *Building* below).
+1. **Launch OpenRocket** (needs JDK 17 to build - see *Building* below).
 2. Open **Tools → AI Copilot (MCP bridge)…**. A companion window appears.
 3. Click **Start**. The window shows the connect command and a live feed of every
    tool the agent calls.
@@ -20,7 +20,7 @@ components — and the changes appear **live** in the running GUI.
    If you set a token in the panel, append:
    `--header "Authorization: Bearer <token>"`.
 
-That's it — ask the agent to "list the components of my rocket" or "add a nose cone and
+That's it - ask the agent to "list the components of my rocket" or "add a nose cone and
 a body tube, give it a C6 motor, and tell me the apogee."
 
 ### Auto-start (headless / unattended)
@@ -52,7 +52,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 | `open_file` / `save_file` | Open / save `.ork` files (headless, no dialogs) |
 | `save_screenshot` | Save a PNG of the design view (2D schematic side/back/top, or 3D) |
 | `animate_flight` | Open an animated 2D playback of the rocket flying its trajectory |
-| `render_flight_video` | Photoreal 3D launch via Blender driven by the **real 6-DOF simulation** — the model's attitude is OpenRocket's actual orientation (θ zenith, φ azimuth), it tracks the real ground path (downrange *and* lateral wind drift), and the exhaust flame scales with the real thrust curve. `scene`: day/sunset/space/forest/winter/desert; `quality`: hd/fullhd/2k/4k; `sceneFile`: your own `.blend` environment (rocket spawns at origin); `camera`: ground/chase/tracking/orbit/onboard/recovery/**profile** (profile = broadside, screen tilt = true pitch) for a single-angle clip; `interactive:true` to **open it live in Blender** (orbit/zoom/scrub) |
+| `render_flight_video` | Photoreal 3D launch via Blender driven by the **real 6-DOF simulation** - the model's attitude is OpenRocket's actual orientation (θ zenith, φ azimuth), it tracks the real ground path (downrange *and* lateral wind drift), and the exhaust flame scales with the real thrust curve. `scene`: day/sunset/space/forest/winter/desert; `quality`: hd/fullhd/2k/4k; `sceneFile`: your own `.blend` environment (rocket spawns at origin); `camera`: ground/chase/tracking/orbit/onboard/recovery/**profile** (profile = broadside, screen tilt = true pitch) for a single-angle clip; `interactive:true` to **open it live in Blender** (orbit/zoom/scrub) |
 | `get_component_tree` | Full component tree (ids, types, names, nesting) |
 | `get_component` | Every readable parameter of one component |
 | `get_stability` | CG, CP, stability margin (calibers), diameter, length, mass |
@@ -85,7 +85,7 @@ token in the panel (or via `-Dopenrocket.mcp.token`); requests must then carry
 ## Autonomous design: the `/goal` command
 
 `docs/goal-command.md` is a Claude Code slash command that drives these tools to design a
-complete rocket from a natural-language spec — build, check stability, simulate, size recovery,
+complete rocket from a natural-language spec - build, check stability, simulate, size recovery,
 and iterate until the spec is met. Install it with:
 
 ```bash
@@ -99,7 +99,7 @@ Then, with the bridge connected, run e.g.
 `AxialStage` under the rocket (a booster), or a `ParallelStage` / `PodSet` under a body component.
 A 2-stage rocket simulates with staged ignition out of the box.
 
-`get_component` / `set_component` are **generic** — they introspect each component's
+`get_component` / `set_component` are **generic** - they introspect each component's
 bean properties, so any parameter a human can edit in the GUI is reachable by name
 (e.g. `length`, `aftRadius`, `thickness`, `finCount`, `sweep`). Use `get_component`
 first to discover the exact names.
@@ -118,7 +118,7 @@ the open window and can be undone with Ctrl/Cmd-Z.
 ## Building
 
 OpenRocket targets **Java 17**. The Gradle build also has to *run on* a JDK it
-supports (≤ 24/25) — JDK 26 fails with `Unsupported class file major version 70`.
+supports (≤ 24/25) - JDK 26 fails with `Unsupported class file major version 70`.
 
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)   # or your JDK 17 path

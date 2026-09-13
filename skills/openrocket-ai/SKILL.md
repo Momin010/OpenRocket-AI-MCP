@@ -1,13 +1,13 @@
 ---
 name: openrocket-ai
-description: Design, simulate, analyse, optimise and visualise model rockets by driving a running OpenRocket instance over its MCP bridge. Use whenever the user wants to build or modify a rocket, run flight simulations, check stability, pick motors, optimise a design, take design screenshots, or watch a 3D/animated flight — in OpenRocket.
+description: Design, simulate, analyse, optimise and visualise model rockets by driving a running OpenRocket instance over its MCP bridge. Use whenever the user wants to build or modify a rocket, run flight simulations, check stability, pick motors, optimise a design, take design screenshots, or watch a 3D/animated flight - in OpenRocket.
 ---
 
 # OpenRocket AI
 
 You can control a live OpenRocket instance through the `openrocket` MCP server. Everything a
-human can do in OpenRocket — build components, set any parameter, run flight simulations, check
-stability, assign motors, optimise, screenshot the design, animate the flight, export files — is
+human can do in OpenRocket - build components, set any parameter, run flight simulations, check
+stability, assign motors, optimise, screenshot the design, animate the flight, export files - is
 available as a tool.
 
 ## Connect (one time)
@@ -34,11 +34,11 @@ The tools then appear as `mcp__openrocket__*`. Confirm with `list_open_designs`.
 - **Motors & staging:** `search_motors`, `set_motor`, `set_ignition`, `set_separation`,
   `set_deployment`.
 - **Simulation:** `list/add/delete_simulation`, `run_simulation`, `get_simulation_results`,
-  `get_flight_data` (+CSV — time, altitude, velocity, acceleration, mach, stability, thrust, mass,
+  `get_flight_data` (+CSV - time, altitude, velocity, acceleration, mach, stability, thrust, mass,
   real attitude `orientationTheta`/`orientationPhi`, ground track `positionX`/`positionY`),
   `set_simulation_options`, `apply_environment` (real-world launch physics by place:
   finland_summer/finland_winter/desert/high_altitude/coastal/calm), `add_simulation_extension`.
-- **Visualisation:** `animate_flight` (2D playback); `render_flight_video` — photoreal 3D launch
+- **Visualisation:** `animate_flight` (2D playback); `render_flight_video` - photoreal 3D launch
   via Blender driven by the **real 6-DOF sim** (actual attitude, lateral wind drift, thrust-scaled
   flame). Args: `scene` day/sunset/space/forest/winter/desert, `quality` hd/fullhd/2k/4k,
   `sceneFile` (your own `.blend` environment), `camera`
@@ -53,7 +53,7 @@ The tools then appear as `mcp__openrocket__*`. Confirm with `list_open_designs`.
 2. Build the airframe with `add_component` + `set_component`: nose cone, body tube, fins,
    parachute, launch lug. Read parameter names back with `get_component`.
 3. `search_motors` → `set_motor` (auto-creates a flight configuration so it can fly).
-4. **Iterate to spec** — never assert numbers, measure them:
+4. **Iterate to spec** - never assert numbers, measure them:
    - `get_stability` → aim for ~1–2 calibers. Too low/negative: bigger fins / longer nose /
      nose mass. Too high: smaller fins. Or `optimize_parameter` objective `target_stability`.
    - `run_simulation` → compare `maxAltitude` to target; adjust motor/mass/drag or
@@ -69,13 +69,13 @@ The tools then appear as `mcp__openrocket__*`. Confirm with `list_open_designs`.
 OpenRocket's actual flight attitude (θ = elevation above horizontal, φ = azimuth), it follows the
 real downrange **and** lateral ground track (so wind drift shows in true 3D), and the exhaust flame
 scales with the real thrust curve (gone at burnout). Use `camera:"profile"` for a broadside view
-where on-screen tilt equals true pitch — handy when the audience wants to read the pitch program.
+where on-screen tilt equals true pitch - handy when the audience wants to read the pitch program.
 What's real: trajectory, attitude, ground track, thrust-driven flame size, environment physics.
 What's a visual prop: flame glow, parachute mesh, scenery; descent under chute is shown upright.
 
 ## Tips
 
-- `set_component` is generic — pass `{ "properties": { "length": 0.3, "aftRadius": 0.025 } }`.
+- `set_component` is generic - pass `{ "properties": { "length": 0.3, "aftRadius": 0.025 } }`.
   Use `get_component` first to discover exact names.
 - All edits render live in the GUI and are undoable.
 - Distances are metres from the nose; results are SI.

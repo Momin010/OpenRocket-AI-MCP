@@ -121,6 +121,16 @@ public abstract class MotorDatabaseUpdateChecker {
 			return;
 		}
 
+		if (!userInitiated && Boolean.getBoolean("openrocket.mcp.autostart")) {
+			try {
+				updater.installRemoteDatabase(motorLibraryDir, remote);
+				log.info("Motor database updated to {}", remote.getDatabaseVersion());
+			} catch (Exception e) {
+				log.warn("Motor database update failed, using the installed one", e);
+			}
+			return;
+		}
+
 		// 5) Respect "skip this version": if the user previously chose to ignore this remote version,
 		//    don't prompt again (but do show feedback for manual checks).
 		String remoteVersion = Long.toString(remote.getDatabaseVersion());

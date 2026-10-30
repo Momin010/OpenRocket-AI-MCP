@@ -1539,6 +1539,15 @@ private static final Translator trans = Application.getTranslator();
 	}
 
 
+	public boolean isUntouched() {
+		return replaceable && document.isSaved();
+	}
+
+	public boolean closeDiscarding() {
+		document.setSaved(true);
+		return closeAction();
+	}
+
 	private void closeIfReplaceable() {
 		// Close previous window if replacing
 		if (replaceable && document.isSaved()) {

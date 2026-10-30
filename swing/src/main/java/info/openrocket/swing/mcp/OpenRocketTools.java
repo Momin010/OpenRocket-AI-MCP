@@ -75,6 +75,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +109,7 @@ public class OpenRocketTools {
 			case "list_open_designs":   return listOpenDesigns();
 			case "new_design":          return newDesign(args);
 			case "open_file":           return openFile(args);
+			case "close_design":        return closeDesign(args);
 			case "save_file":           return saveFile(args);
 			case "save_screenshot":     return saveScreenshot(args);
 			case "get_component_tree":  return getComponentTree(args);
@@ -180,7 +182,7 @@ public class OpenRocketTools {
 
 	private JsonObject newDesign(JsonObject args) throws Exception {
 		String name = optString(args, "name", null);
-		AtomicReference<UUID> idRef = new AtomicReference<>();
+		AtomicReference<BasicFrame> frameRef = new AtomicReference<>();
 		onEdt(() -> {
 			OpenRocketDocument doc = OpenRocketDocumentFactory.createNewRocket();
 			if (name != null) {
@@ -188,13 +190,14 @@ public class OpenRocketTools {
 			}
 			BasicFrame frame = new BasicFrame(doc);
 			frame.setVisible(true);
-			idRef.set(doc.getRocket().getID());
+			closeUntouched(frame);
+			frameRef.set(frame);
 			return null;
 		});
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
-		result.addProperty("designIndex", BasicFrame.getAllFrames().size() - 1);
-		result.addProperty("rocketId", idRef.get().toString());
+		result.addProperty("designIndex", BasicFrame.getAllFrames().indexOf(frameRef.get()));
+		result.addProperty("rocketId", frameRef.get().getDocument().getRocket().getID().toString());
 		return result;
 	}
 
@@ -204,20 +207,64 @@ public class OpenRocketTools {
 		if (!file.exists()) {
 			throw new ToolException("File does not exist: " + file.getAbsolutePath());
 		}
-		// Load headlessly (no modal warning/progress dialogs that would block an agent), then
-		// attach the document to a new window on the EDT.
+		File canonical = file.getCanonicalFile();
+		List<BasicFrame> frames = BasicFrame.getAllFrames();
+		for (int i = 0; i < frames.size(); i++) {
+			File f = frames.get(i).getDocument().getFile();
+			if (f != null && f.getCanonicalFile().equals(canonical)) {
+				BasicFrame open = frames.get(i);
+				onEdt(() -> {
+					open.toFront();
+					return null;
+				});
+				JsonObject result = new JsonObject();
+				result.addProperty("ok", true);
+				result.addProperty("alreadyOpen", true);
+				result.addProperty("designIndex", i);
+				result.addProperty("name", open.getDocument().getRocket().getName());
+				return result;
+			}
+		}
 		final OpenRocketDocument doc = new GeneralRocketLoader(file).load();
-		AtomicReference<String> nameRef = new AtomicReference<>();
+		doc.setFile(canonical);
+		doc.setSaved(true);
+		AtomicReference<BasicFrame> frameRef = new AtomicReference<>();
 		onEdt(() -> {
 			BasicFrame frame = new BasicFrame(doc);
 			frame.setVisible(true);
-			nameRef.set(doc.getRocket().getName());
+			closeUntouched(frame);
+			frameRef.set(frame);
 			return null;
 		});
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
-		result.addProperty("designIndex", BasicFrame.getAllFrames().size() - 1);
-		result.addProperty("name", nameRef.get());
+		result.addProperty("designIndex", BasicFrame.getAllFrames().indexOf(frameRef.get()));
+		result.addProperty("name", doc.getRocket().getName());
+		return result;
+	}
+
+	private static void closeUntouched(BasicFrame keep) {
+		for (BasicFrame f : new ArrayList<>(BasicFrame.getAllFrames())) {
+			if (f != keep && f.isUntouched()) {
+				f.closeDiscarding();
+			}
+		}
+	}
+
+	private JsonObject closeDesign(JsonObject args) throws Exception {
+		BasicFrame frame = activeFrame(args);
+		boolean discard = args.has("discard") && args.get("discard").getAsBoolean();
+		if (!frame.getDocument().isSaved() && !discard) {
+			throw new ToolException("Design has unsaved changes. save_file first, or pass discard:true.");
+		}
+		String name = frame.getDocument().getRocket().getName();
+		onEdt(() -> {
+			frame.closeDiscarding();
+			return null;
+		});
+		JsonObject result = new JsonObject();
+		result.addProperty("ok", true);
+		result.addProperty("closed", name);
 		return result;
 	}
 
@@ -2423,11 +2470,14 @@ public class OpenRocketTools {
 				"List the rocket designs currently open in OpenRocket, with their designIndex.",
 				"{\"type\":\"object\",\"properties\":{}}"));
 		tools.add(tool("new_design",
-				"Create a brand-new empty rocket design and open it in a new window.",
+				"Create a separate new rocket in its own window. Only for a genuinely different rocket: to iterate, keep editing the open design (set_component etc.) and save_file, or save_file to a new path for a variant.",
 				"{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}"));
 		tools.add(tool("open_file",
-				"Open an existing .ork rocket file.",
+				"Open an existing .ork rocket file. If it is already open, focuses that window and returns its designIndex instead of opening a copy.",
 				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}"));
+		tools.add(tool("close_design",
+				"Close a design window (designIndex, default active). Refuses unsaved changes unless discard is true.",
+				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"},\"discard\":{\"type\":\"boolean\"}}}"));
 		tools.add(tool("save_file",
 				"Save the active design. Optionally provide a path to save-as.",
 				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));

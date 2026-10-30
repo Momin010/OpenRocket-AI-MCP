@@ -111,6 +111,8 @@ public class OpenRocketTools {
 			case "open_file":           return openFile(args);
 			case "close_design":        return closeDesign(args);
 			case "save_file":           return saveFile(args);
+			case "list_versions":       return listVersions(args);
+			case "restore_version":     return restoreVersion(args);
 			case "save_screenshot":     return saveScreenshot(args);
 			case "get_component_tree":  return getComponentTree(args);
 			case "get_component":       return getComponent(args);
@@ -286,9 +288,82 @@ public class OpenRocketTools {
 			doc.setSaved(true);
 			return null;
 		});
+		int version = recordVersion(dest, optString(args, "note", ""));
 		JsonObject result = new JsonObject();
 		result.addProperty("ok", true);
 		result.addProperty("file", dest.getAbsolutePath());
+		result.addProperty("version", version);
+		return result;
+	}
+
+	private static File versionDir(File file) throws java.io.IOException {
+		String key = file.getCanonicalPath().replaceAll("[^A-Za-z0-9._-]", "_");
+		return new File(info.openrocket.core.arch.SystemInfo.getUserApplicationDirectory(), "versions/" + key);
+	}
+
+	private static JsonArray versionLog(File dir) throws java.io.IOException {
+		File log = new File(dir, "log.json");
+		return log.exists() ? JsonParser.parseString(java.nio.file.Files.readString(log.toPath())).getAsJsonArray() : new JsonArray();
+	}
+
+	private static int recordVersion(File file, String note) throws java.io.IOException {
+		File dir = versionDir(file);
+		dir.mkdirs();
+		JsonArray log = versionLog(dir);
+		int v = log.size() + 1;
+		java.nio.file.Files.copy(file.toPath(), new File(dir, "v" + v + ".ork").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		JsonObject e = new JsonObject();
+		e.addProperty("version", v);
+		e.addProperty("time", java.time.LocalDateTime.now().withNano(0).toString());
+		e.addProperty("note", note);
+		log.add(e);
+		java.nio.file.Files.writeString(new File(dir, "log.json").toPath(), log.toString());
+		return v;
+	}
+
+	private File designFile(JsonObject args) throws Exception {
+		String path = optString(args, "path", null);
+		File f = path != null ? new File(path) : activeFrame(args).getDocument().getFile();
+		if (f == null) {
+			throw new ToolException("Design has never been saved, so it has no versions. save_file with a path first.");
+		}
+		return f;
+	}
+
+	private JsonObject listVersions(JsonObject args) throws Exception {
+		File f = designFile(args);
+		JsonObject result = new JsonObject();
+		result.addProperty("file", f.getAbsolutePath());
+		result.add("versions", versionLog(versionDir(f)));
+		return result;
+	}
+
+	private JsonObject restoreVersion(JsonObject args) throws Exception {
+		File f = designFile(args).getCanonicalFile();
+		int v = args.get("version").getAsInt();
+		File src = new File(versionDir(f), "v" + v + ".ork");
+		if (!src.exists()) {
+			throw new ToolException("No version " + v + " for " + f);
+		}
+		for (BasicFrame frame : new ArrayList<>(BasicFrame.getAllFrames())) {
+			File open = frame.getDocument().getFile();
+			if (open != null && open.getCanonicalFile().equals(f)) {
+				if (!frame.getDocument().isSaved()) {
+					throw new ToolException("Design has unsaved changes. save_file first so they become a version.");
+				}
+				onEdt(() -> {
+					frame.closeDiscarding();
+					return null;
+				});
+			}
+		}
+		java.nio.file.Files.copy(src.toPath(), f.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		int nv = recordVersion(f, "restored v" + v);
+		JsonObject openArgs = new JsonObject();
+		openArgs.addProperty("path", f.getAbsolutePath());
+		JsonObject result = openFile(openArgs);
+		result.addProperty("version", nv);
+		result.addProperty("restoredFrom", v);
 		return result;
 	}
 
@@ -2479,8 +2554,14 @@ public class OpenRocketTools {
 				"Close a design window (designIndex, default active). Refuses unsaved changes unless discard is true.",
 				"{\"type\":\"object\",\"properties\":{\"designIndex\":{\"type\":\"integer\"},\"discard\":{\"type\":\"boolean\"}}}"));
 		tools.add(tool("save_file",
-				"Save the active design. Optionally provide a path to save-as.",
+				"Save the active design to its one .ork file. Every save becomes a new numbered version (like Fusion), so iterate on the same file and give a short note of what changed. Only give a path the first time.",
+				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("list_versions",
+				"Version history of the active design's file (or path): version number, time, note.",
 				"{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}}}"));
+		tools.add(tool("restore_version",
+				"Bring back an older version of the file in the same window. The restore is saved as a new version, so nothing is lost.",
+				"{\"type\":\"object\",\"properties\":{\"version\":{\"type\":\"integer\"},\"path\":{\"type\":\"string\"},\"designIndex\":{\"type\":\"integer\"}},\"required\":[\"version\"]}"));
 		tools.add(tool("save_screenshot",
 				"Save a PNG screenshot of the design. view '2d' (default) renders the schematic "
 				+ "(viewType side/back/top); view '3d' captures the live 3D view. Use this to snapshot "

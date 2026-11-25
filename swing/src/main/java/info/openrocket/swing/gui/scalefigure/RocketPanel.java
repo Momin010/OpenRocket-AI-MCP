@@ -1239,6 +1239,21 @@ public class RocketPanel extends JPanel implements TreeSelectionListener, Change
 	 */
 	private WarningSet warnings = new WarningSet();
 
+	public void refreshExtras() {
+		flightDataFunctionalID = ModID.INVALID;
+		flightDataMotorID = null;
+		updateExtras();
+		FlightConfigurationId curID = document.getSelectedConfiguration().getFlightConfigurationID();
+		for (Simulation sim : document.getSimulations()) {
+			if (sim.getFlightConfigurationId().compareTo(curID) == 0 && sim.getStatus() == Simulation.Status.UPTODATE) {
+				extraText.setSimulation(sim);
+				extraText.setCalculatingData(false);
+				break;
+			}
+		}
+		updateFigures();
+	}
+
 	public void updateExtras() {
 		CoordinateIF cp, cg;
 		double cgx = Double.NaN;

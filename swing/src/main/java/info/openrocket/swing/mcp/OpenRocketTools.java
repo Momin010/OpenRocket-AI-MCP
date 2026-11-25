@@ -385,6 +385,7 @@ public class OpenRocketTools {
 
 		BufferedImage image = onEdtCompute(() -> {
 			RocketPanel panel = frame.getRocketPanel();
+			panel.refreshExtras();
 			if (view.equals("3d")) {
 				RocketFigure3d fig3d = panel.getFigure3d();
 				return fig3d == null ? null : fig3d.captureImage();
